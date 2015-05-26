@@ -33,7 +33,7 @@
 
 /*
  * get the VFS inode from the inode cache, if missed, add a new one into
- * the cache and fill it with information retrieved from disc
+ * the cache and fill it with information retrieved from disk
  *
  * @vsb: the VFS super block structure
  * @inode_no: inode number
@@ -44,24 +44,14 @@ struct inode * wtfs_iget(struct super_block * vsb, uint64_t inode_no)
 {
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	struct inode * vfs_inode = NULL;
-	struct wtfs_inode_table_block * inode_table = NULL;
 	struct wtfs_inode * inode = NULL;
 	struct buffer_head * bh = NULL;
-	uint64_t block, offset, i;
-	uint64_t next;
 	int ret = -EINVAL;
-
-	/* first check if inode number is valid */
-	if (inode_no < WTFS_ROOT_INO || inode_no > sbi->inode_count) {
-		wtfs_error("invalid inode number %llu\n", inode_no);
-		ret = -EIO;
-		goto error;
-	}
 
 	/* get inode in cache */
 	vfs_inode = iget_locked(vsb, (unsigned long)inode_no);
 	if (vfs_inode == NULL) {
-		wtfs_error("unable to get the inode of number %d\n", inode_no);
+		wtfs_error("unable to get the inode of number %llu\n", inode_no);
 		ret = -ENOMEM;
 		goto error;
 	}
@@ -73,7 +63,7 @@ struct inode * wtfs_iget(struct super_block * vsb, uint64_t inode_no)
 
 	/*
 	 * inode missed in cache, then we retrieve corresponding physical inode
-	 * from disc and fill the VFS inode
+	 * from disk and fill the VFS inode
 	 */
 	inode = wtfs_get_inode(vsb, inode_no, &bh);
 	if (IS_ERR(inode)) {
@@ -128,7 +118,7 @@ error:
 /********************* implementation of wtfs_get_inode ***********************/
 
 /*
- * get the physical inode from disc
+ * get the physical inode from disk
  * the buffer_head must be released after calling this function
  *
  * @vsb: the VFS super block structure
@@ -141,38 +131,25 @@ struct wtfs_inode * wtfs_get_inode(struct super_block * vsb, uint64_t inode_no,
 	struct buffer_head ** pbh)
 {
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
-	struct wtfs_inode_table_block * inode_table = NULL;
-	uint64_t block, offset, i;
-	uint64_t next;
+	uint64_t block, offset;
 	int ret = -EINVAL;
 
 	/* first check if inode number is valid */
-	if (inode_no < WTFS_ROOT_INO || inode_no > sbi->inode_count) {
+	if (is_ino_valid(vsb, inode_no) != 0) {
 		wtfs_error("invalid inode number %llu\n", inode_no);
 		goto error;
 	}
 
-	/* calculate the inode table block index and the offset */
+	/* calculate the index of inode table and the offset */
 	block = (inode_no - WTFS_ROOT_INO) / WTFS_INODE_COUNT_PER_TABLE;
 	offset = (inode_no - WTFS_ROOT_INO) % WTFS_INODE_COUNT_PER_TABLE;
 
-	/* read the first inode table into buffer */
-	if ((*pbh = sb_bread(vsb, sbi->inode_table_first))) {
-		wtfs_error("unable to read the inode table\n");
+	/* get the block-th inode table from linked list */
+	*pbh = wtfs_get_linked_block(vsb, sbi->inode_table_first, block);
+	if (IS_ERR(*pbh)) {
+		ret = PTR_ERR(*pbh);
+		*pbh = NULL;
 		goto error;
-	}
-	inode_table = (struct wtfs_inode_table_block *)(*pbh)->b_data;
-
-	/* find the block-th inode table */
-	next = wtfs64_to_cpu(inode_table->next);
-	for (i = 0; i < block; ++i) {
-		brelse(*pbh);
-		if ((*pbh = sb_bread(vsb, next)) == NULL) {
-			wtfs_error("unable to read the inode table\n");
-			goto error;
-		}
-		inode_table = (struct wtfs_inode_table_block *)(*pbh)->b_data;
-		next = wtfs64_to_cpu(inode_table->next);
 	}
 
 	/* here we get the inode */
@@ -184,4 +161,138 @@ error:
 		*pbh = NULL; /* here we set it to NULL to avoid freeing it twice */
 	}
 	return ERR_PTR(ret);
+}
+
+/********************* implementation of is_ino_valid *************************/
+
+/*
+ * check if the given inode number is valid
+ *
+ * @vsb: the VFS super block
+ * @inode_no: inode number
+ *
+ * return: 0 if valid, a nonzero number otherwise
+ */
+int is_ino_valid(struct super_block * vsb, uint64_t inode_no)
+{
+	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
+	uint64_t block, offset;
+
+	/* calculate the index of inode bitmap and the offset */
+	block = inode_no / (WTFS_DATA_SIZE * 8);
+	offset = inode_no % (WTFS_DATA_SIZE * 8);
+
+	return wtfs_test_bitmap_bit(vsb, sbi->inode_bitmap_first, block, offset);
+}
+
+/********************* implementation of wtfs_get_linked_block ****************/
+
+/*
+ * get the specified block in the block linked list
+ *
+ * @vsb: the VFS super block structure
+ * @entry: the entry block number
+ * @count: the position of the block we want in the linked list
+ *
+ * return: a pointer to buffer_head structure containing the block
+ *         it must be released after calling this function
+ */
+struct buffer_head * wtfs_get_linked_block(struct super_block * vsb,
+	uint64_t entry, uint64_t count)
+{
+	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
+	struct wtfs_data_block * block = NULL;
+	struct buffer_head * bh = NULL;
+	uint64_t next, i;
+	int ret = -EINVAL;
+
+	/* first check if the start block number is valid */
+	if (entry < WTFS_RB_INODE_TABLE || entry >= sbi->block_count) {
+		wtfs_error("invalid block number %llu in linked list\n", entry);
+		goto error;
+	}
+
+	/* read the entry block into buffer */
+	if ((bh = sb_bread(vsb, entry)) == NULL) {
+		wtfs_error("unable to read the block %llu\n", entry);
+		goto error;
+	}
+	block = (struct wtfs_data_block *)bh->b_data;
+
+	/* find the count-th block */
+	next = wtfs64_to_cpu(block->next);
+	for (i = 0; i < count; ++i) {
+		brelse(bh);
+		if (next < WTFS_RB_INODE_TABLE || next >= sbi->block_count) {
+			wtfs_error("invalid block number %llu in linked list\n", next);
+			goto error;
+		}
+		if ((bh = sb_bread(vsb, next)) == NULL) {
+			wtfs_error("unable to read the block %llu\n", next);
+			goto error;
+		}
+		block = (struct wtfs_data_block *)(bh)->b_data;
+		next = wtfs64_to_cpu(block->next);
+	}
+	return bh;
+
+error:
+	if (bh != NULL) {
+		brelse(bh);
+	}
+	return ERR_PTR(ret);
+}
+
+/********************* implementation of bitmap operations ********************/
+
+int wtfs_set_bitmap_bit(struct super_block * vsb, uint64_t entry,
+	uint64_t count, uint64_t offset)
+{
+	struct buffer_head * bh = NULL;
+
+	bh = wtfs_get_linked_block(vsb, entry, count);
+	if (IS_ERR(bh)) {
+		return PTR_ERR(bh);
+	}
+
+	if (!test_bit(offset, (const volatile unsigned long *)bh->b_data)) {
+		set_bit(offset, (volatile unsigned long *)bh->b_data);
+		mark_buffer_dirty(bh);
+	}
+	brelse(bh);
+	return 0;
+}
+
+int wtfs_clear_bitmap_bit(struct super_block * vsb, uint64_t entry,
+		uint64_t count, uint64_t offset)
+{
+	struct buffer_head * bh = NULL;
+
+	bh = wtfs_get_linked_block(vsb, entry, count);
+	if (IS_ERR(bh)) {
+		return PTR_ERR(bh);
+	}
+
+	if (test_bit(offset, (const volatile unsigned long *)bh->b_data)) {
+		clear_bit(offset, (volatile unsigned long *)bh->b_data);
+		mark_buffer_dirty(bh);
+	}
+	brelse(bh);
+	return 0;
+}
+
+int wtfs_test_bitmap_bit(struct super_block * vsb, uint64_t entry,
+		uint64_t count, uint64_t offset)
+{
+	struct buffer_head * bh = NULL;
+	int ret = -EINVAL;
+
+	bh = wtfs_get_linked_block(vsb, entry, count);
+	if (IS_ERR(bh)) {
+		return PTR_ERR(bh);
+	}
+
+	ret = test_bit(offset, (const volatile unsigned long *)bh->b_data);
+	brelse(bh);
+	return ret;
 }

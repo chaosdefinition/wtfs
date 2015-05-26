@@ -22,6 +22,16 @@
 
 #include "wtfs.h"
 
-const struct file_operations wtfs_dir_ops = {
+/* declaration of directory operations */
+static int wtfs_iterate(struct file * file, struct dir_context * ctx);
 
+const struct file_operations wtfs_dir_ops = {
+	.iterate = wtfs_iterate
 };
+
+/********************* implementation of iterate ******************************/
+
+static int wtfs_iterate(struct file * file, struct dir_context * ctx)
+{
+	return -EPERM;
+}

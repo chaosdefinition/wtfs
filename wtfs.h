@@ -27,7 +27,6 @@
 
 #include <linux/types.h>
 #include <linux/fs.h>
-#include <linux/printk.h>
 
 #include "macro_utils.h"
 
@@ -39,24 +38,34 @@
 
 /*
  * version 1 physical disk layout:
- * +-------------+-------------+-------------------+--------------+------+-----+
- * | boot loader | super block | first inode table | first bitmap | data | ... |
- * +-------------+-------------+-------------------+--------------+------+-----+
+ *   +------------------+
+ * 0 | boot loader      |
+ *   +------------------+
+ * 1 | super block      |
+ *   +------------------+  +------------------+
+ * 2 | 1st inode table  |->| 2nd inode table  |->...
+ *   +------------------+  +------------------+
+ * 3 | 1st block bitmap |->| 2nd block bitmap |->...
+ *   +------------------+  +------------------+
+ * 4 | 1st inode bitmap |->| 2nd inode bitmap |->...
+ *   +------------------+  +------------------+
+ * 5 | data blocks...   |
+ *   +------------------+
  *
  * -- block information --
  * size of each block:              4096 bytes
  *
  * -- inode information --
  * size of each inode:              64 bytes
- * max inode count per table:       63
- * max inode count:                 0xfffffffeul
+ * max inodes per table:            63
+ * max inodes:                      0xfffffffful
  *
  * -- bitmap information --
- * max block count per bitmap:      4088 * 8
+ * max blocks/inodes per bitmap:    4088 * 8
  *
  * -- data block information --
  * size of each dentry:             64 bytes
- * max dentry count per block:      63
+ * max dentries per block:          63
  */
 
 /*
@@ -86,17 +95,18 @@
 /* reserved block indices */
 #define WTFS_RB_BOOT            0   /* boot loader block */
 #define WTFS_RB_SUPER           1   /* super block */
-#define WTFS_RB_INODE_FIRST     2   /* first inode table block */
-#define WTFS_RB_BITMAP_FIRST    3   /* first bitmap block */
+#define WTFS_RB_INODE_TABLE     2   /* first inode table */
+#define WTFS_RB_BLOCK_BITMAP    3   /* first block bitmap */
+#define WTFS_RB_INODE_BITMAP    4   /* first inode bitmap */
 
 /* first data block index (for root directory) */
-#define WTFS_DB_FIRST           4
+#define WTFS_DB_FIRST           5
 
 /* inode number of root directory */
 #define WTFS_ROOT_INO 1
 
 /* max inode number */
-#define WTFS_INODE_MAX 0xfffffffeul
+#define WTFS_INODE_MAX 0xfffffffful
 
 /* DEBUG macro for wtfs */
 #ifdef DEBUG
@@ -120,7 +130,7 @@
 	no_printk(fmt, ##__VA_ARGS__)
 #endif /* WTFS_DEBUG */
 
-/* structure for super block in disc */
+/* structure for super block in disk */
 struct wtfs_super_block
 {
 	wtfs64_t version;                   /* 8 bytes */
@@ -130,36 +140,21 @@ struct wtfs_super_block
 
 	wtfs64_t inode_table_first;         /* 8 bytes */
 	wtfs64_t inode_table_count;         /* 8 bytes */
-	wtfs64_t bitmap_first;              /* 8 bytes */
-	wtfs64_t bitmap_count;              /* 8 bytes */
+	wtfs64_t block_bitmap_first;        /* 8 bytes */
+	wtfs64_t block_bitmap_count;        /* 8 bytes */
+	wtfs64_t inode_bitmap_first;        /* 8 bytes */
+	wtfs64_t inode_bitmap_count;        /* 8 bytes */
 
 	wtfs64_t inode_count;               /* 8 bytes */
 	wtfs64_t free_block_count;          /* 8 bytes */
 
-	wtfs8_t padding                     /* 4016 bytes */
+	wtfs8_t padding                     /* 4000 bytes */
 	[
-		WTFS_BLOCK_SIZE - sizeof(wtfs64_t) * 10
+		WTFS_BLOCK_SIZE - sizeof(wtfs64_t) * 12
 	];
 };
 
-/* structure for super block in memory */
-struct wtfs_sb_info
-{
-	uint64_t version;
-	uint64_t magic;
-	uint64_t block_size;
-	uint64_t block_count;
-
-	uint64_t inode_table_first;
-	uint64_t inode_table_count;
-	uint64_t bitmap_first;
-	uint64_t bitmap_count;
-
-	uint64_t inode_count;
-	uint64_t free_block_count;
-};
-
-/* structure for inode in disc */
+/* structure for inode in disk */
 struct wtfs_inode
 {
 	wtfs64_t inode_no;                  /* 8 bytes */
@@ -178,15 +173,8 @@ struct wtfs_inode
 	wtfs16_t gid;                       /* 2 bytes */
 };
 
-/* structure for inode in memory */
-struct wtfs_inode_info
-{
-	uint64_t dir_entry_count;
-	struct inode vfs_inode;
-};
-
-/* structure for inode table block */
-struct wtfs_inode_table_block
+/* structure for inode table */
+struct wtfs_inode_table
 {
 	struct wtfs_inode inodes            /* 4032 bytes */
 	[
@@ -199,13 +187,6 @@ struct wtfs_inode_table_block
 	wtfs64_t next;                      /* 8 bytes */
 };
 
-/* structure for bitmap block */
-struct wtfs_bitmap_block
-{
-	wtfs8_t map[WTFS_DATA_SIZE];        /* 4088 bytes */
-	wtfs64_t next;                      /* 8 bytes */
-};
-
 /* structure for directory data */
 struct wtfs_dentry
 {
@@ -213,7 +194,7 @@ struct wtfs_dentry
 	char filename[WTFS_FILENAME_MAX];   /* 56 bytes */
 };
 
-/* structure for data block */
+/* structure for data block and bitmap */
 struct wtfs_data_block
 {
 	union {                             /* 4088 bytes */
@@ -230,6 +211,35 @@ struct wtfs_data_block
 		};
 	};
 	wtfs64_t next;                      /* 8 bytes */
+};
+
+/* following only available for module itself */
+#ifdef __KERNEL__
+
+/* structure for super block in memory */
+struct wtfs_sb_info
+{
+	uint64_t version;
+	uint64_t magic;
+	uint64_t block_size;
+	uint64_t block_count;
+
+	uint64_t inode_table_first;
+	uint64_t inode_table_count;
+	uint64_t block_bitmap_first;
+	uint64_t block_bitmap_count;
+	uint64_t inode_bitmap_first;
+	uint64_t inode_bitmap_count;
+
+	uint64_t inode_count;
+	uint64_t free_block_count;
+};
+
+/* structure for inode in memory */
+struct wtfs_inode_info
+{
+	uint64_t dir_entry_count;
+	struct inode vfs_inode;
 };
 
 /* get sb_info from the VFS super block */
@@ -255,5 +265,16 @@ extern const struct file_operations wtfs_dir_ops;
 extern struct inode * wtfs_iget(struct super_block * vsb, uint64_t inode_no);
 extern struct wtfs_inode * wtfs_get_inode(struct super_block * vsb,
 	uint64_t inode_no, struct buffer_head ** pbh);
+extern int is_ino_valid(struct super_block * vsb, uint64_t inode_no);
+extern struct buffer_head * wtfs_get_linked_block(struct super_block * vsb,
+	uint64_t start, uint64_t count);
+extern int wtfs_set_bitmap_bit(struct super_block * vsb, uint64_t entry,
+	uint64_t count, uint64_t offset);
+extern int wtfs_clear_bitmap_bit(struct super_block * vsb, uint64_t entry,
+	uint64_t count, uint64_t offset);
+extern int wtfs_test_bitmap_bit(struct super_block * vsb, uint64_t entry,
+	uint64_t count, uint64_t offset);
+
+#endif /* __KERNEL__ */
 
 #endif /* WTFS_H_ */

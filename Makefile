@@ -21,10 +21,17 @@
 obj-m := wtfs.o
 wtfs-objs := super.o inode.o file.o dir.o helper.o
 
-CFLAGS_super.o := -DDEBUG
+all: mkfs.wtfs statfs.wtfs module
 
-all:
+module:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+
+mkfs.wtfs_SOURCES:
+	mkfs.wtfs.c
+
+statfs.wtfs_SOURCES:
+	statfs.wtfs.c
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+	rm -rf mkfs.wtfs statfs.wtfs

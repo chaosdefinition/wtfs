@@ -29,7 +29,6 @@
 #include <linux/buffer_head.h>
 #include <linux/blkdev.h>
 #include <linux/slab.h>
-#include <linux/rcutiny.h>
 
 #include "wtfs.h"
 
@@ -129,7 +128,7 @@ static void wtfs_destroy_inode(struct inode * vfs_inode)
 /********************* implementation of write_inode **************************/
 
 /*
- * routine called when the VFS needs to write an inode to disc
+ * routine called when the VFS needs to write an inode to disk
  *
  * @vfs_inode: the VFS inode structure
  * @wbc: a control structure which tells the writeback code what to do
@@ -158,8 +157,8 @@ static int wtfs_write_inode(struct inode * vfs_inode,
 	/* write to the physical inode (still in memory) */
 	inode->inode_no = cpu_to_wtfs64(vfs_inode->i_ino);
 	inode->mode = cpu_to_wtfs32(vfs_inode->i_mode);
-	inode->uid = cpu_to_wtfs16(vfs_inode->i_uid);
-	inode->gid = cpu_to_wtfs16(vfs_inode->i_gid);
+	inode->uid = cpu_to_wtfs16(i_uid_read(vfs_inode));
+	inode->gid = cpu_to_wtfs16(i_gid_read(vfs_inode));
 	inode->atime = cpu_to_wtfs64(vfs_inode->i_atime.tv_sec);
 	inode->ctime = cpu_to_wtfs64(vfs_inode->i_ctime.tv_sec);
 	inode->mtime = cpu_to_wtfs64(vfs_inode->i_mtime.tv_sec);
@@ -169,7 +168,7 @@ static int wtfs_write_inode(struct inode * vfs_inode,
 		break;
 
 	case S_IFREG:
-		inode->file_size = cpu_to_wtfs64(vfs_inode->i_size);
+		inode->file_size = cpu_to_wtfs64(i_size_read(vfs_inode));
 		break;
 
 	default:
@@ -182,7 +181,7 @@ static int wtfs_write_inode(struct inode * vfs_inode,
 	if (wbc->sync_mode == WB_SYNC_ALL) {
 		sync_dirty_buffer(bh);
 		if (buffer_req(bh) && !buffer_uptodate(bh)) {
-			wtfs_error("inode %d sync failed at %s", vfs_inode->i_ino,
+			wtfs_error("inode %lu sync failed at %s", vfs_inode->i_ino,
 				vfs_inode->i_sb->s_id);
 			ret = -EIO;
 			goto error;
@@ -209,7 +208,34 @@ error:
  */
 static void wtfs_evict_inode(struct inode * vfs_inode)
 {
+	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vfs_inode->i_sb);
+	struct wtfs_inode * inode = NULL;
+	struct buffer_head * bh = NULL;
+	uint64_t block, offset;
 
+	truncate_inode_pages(&(vfs_inode->i_data), 0);
+	invalidate_inode_buffers(vfs_inode);
+	clear_inode(vfs_inode);
+
+	/* clear inode in inode table */
+	inode = wtfs_get_inode(vfs_inode->i_sb, vfs_inode->i_ino, &bh);
+	if (IS_ERR(inode)) {
+		goto error;
+	}
+	memset(inode, 0, sizeof(struct wtfs_inode));
+	mark_buffer_dirty(bh);
+	brelse(bh);
+
+	/* clear bit in bitmap */
+	block = vfs_inode->i_ino / (WTFS_DATA_SIZE * 8);
+	offset = vfs_inode->i_ino % (WTFS_DATA_SIZE * 8);
+	wtfs_clear_bitmap_bit(vfs_inode->i_sb, sbi->inode_bitmap_first,
+		block, offset);
+
+error:
+	if (bh != NULL) {
+		brelse(bh);
+	}
 }
 
 /********************* implementation of put_super ****************************/
@@ -298,7 +324,7 @@ static int wtfs_fill_super(struct super_block * vsb, void * data, int silent)
 
 	/* set block size */
 	if (!sb_set_blocksize(vsb, WTFS_BLOCK_SIZE)) {
-		wtfs_error("block size of %s bytes not supported\n", WTFS_BLOCK_SIZE);
+		wtfs_error("block size of %d bytes not supported\n", WTFS_BLOCK_SIZE);
 		goto error;
 	}
 
@@ -311,7 +337,7 @@ static int wtfs_fill_super(struct super_block * vsb, void * data, int silent)
 	/* check if the magic number mismatches */
 	sb = (struct wtfs_super_block *)bh->b_data;
 	if (wtfs64_to_cpu(sb->magic) != WTFS_MAGIC) {
-		wtfs_error("magic number mismatch: 0x%x\n", wtfs64_to_cpu(sb->magic));
+		wtfs_error("magic number mismatch: 0x%llx\n", wtfs64_to_cpu(sb->magic));
 		ret = -EPERM;
 		goto error;
 	}
@@ -337,8 +363,10 @@ static int wtfs_fill_super(struct super_block * vsb, void * data, int silent)
 	sbi->block_count = wtfs64_to_cpu(sb->block_count);
 	sbi->inode_table_first = wtfs64_to_cpu(sb->inode_table_first);
 	sbi->inode_table_count = wtfs64_to_cpu(sb->inode_table_count);
-	sbi->bitmap_first = wtfs64_to_cpu(sb->bitmap_first);
-	sbi->bitmap_count = wtfs64_to_cpu(sb->bitmap_count);
+	sbi->block_bitmap_first = wtfs64_to_cpu(sb->block_bitmap_first);
+	sbi->block_bitmap_count = wtfs64_to_cpu(sb->block_bitmap_count);
+	sbi->inode_bitmap_first = wtfs64_to_cpu(sb->inode_bitmap_first);
+	sbi->inode_bitmap_count = wtfs64_to_cpu(sb->inode_bitmap_count);
 	sbi->inode_count = wtfs64_to_cpu(sb->inode_count);
 	sbi->free_block_count = wtfs64_to_cpu(sb->free_block_count);
 

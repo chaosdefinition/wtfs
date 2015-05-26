@@ -22,6 +22,29 @@
 
 #include "wtfs.h"
 
-const struct file_operations wtfs_file_ops = {
+/* declaration of file operations */
+static ssize_t wtfs_read(struct file * file, char __user * buf,
+	size_t length, loff_t * ppos);
+static ssize_t wtfs_write(struct file * file, const char __user * buf,
+	size_t length, loff_t * ppos);
 
+const struct file_operations wtfs_file_ops = {
+	.read = wtfs_read,
+	.write = wtfs_write
 };
+
+/********************* implementation of read *********************************/
+
+static ssize_t wtfs_read(struct file * file, char __user * buf,
+	size_t length, loff_t * ppos)
+{
+	return -EPERM;
+}
+
+/********************* implementation of write ********************************/
+
+static ssize_t wtfs_write(struct file * file, const char __user * buf,
+	size_t length, loff_t * ppos)
+{
+	return -EPERM;
+}

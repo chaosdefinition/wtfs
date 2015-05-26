@@ -32,12 +32,21 @@ typedef __le32 wtfs32_t;
 typedef __le64 wtfs64_t;
 
 /* int type converters */
+#ifdef __KERNEL__
 # define wtfs16_to_cpu le16_to_cpu
 # define wtfs32_to_cpu le32_to_cpu
 # define wtfs64_to_cpu le64_to_cpu
 # define cpu_to_wtfs16 cpu_to_le16
 # define cpu_to_wtfs32 cpu_to_le32
 # define cpu_to_wtfs64 cpu_to_le64
+#else
+# define wtfs16_to_cpu le16toh
+# define wtfs32_to_cpu le32toh
+# define wtfs64_to_cpu le64toh
+# define cpu_to_wtfs16 htole16
+# define cpu_to_wtfs32 htole32
+# define cpu_to_wtfs64 htole64
+#endif /* __KERNEL__ */
 
 /* get the size of a structure/union's member */
 #define member_size(type, member) sizeof(((type *)0)->member)
