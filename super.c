@@ -61,10 +61,10 @@ static struct file_system_type wtfs_type = {
 
 /* declaration of super block operations */
 static struct inode * wtfs_alloc_inode(struct super_block * vsb);
-static void wtfs_destroy_inode(struct inode * vfs_inode);
-static int wtfs_write_inode(struct inode * vfs_inode,
+static void wtfs_destroy_inode(struct inode * vi);
+static int wtfs_write_inode(struct inode * vi,
 	struct writeback_control * wbc);
-static void wtfs_evict_inode(struct inode * vfs_inode);
+static void wtfs_evict_inode(struct inode * vi);
 static void wtfs_put_super(struct super_block * vsb);
 static int wtfs_statfs(struct dentry * dentry, struct kstatfs * buf);
 
@@ -118,11 +118,11 @@ static void wtfs_i_callback(struct rcu_head * head)
 /*
  * routine called to release resources allocated by alloc_inode
  *
- * @vfs_inode: the VFS inode structure
+ * @vi: the VFS inode structure
  */
-static void wtfs_destroy_inode(struct inode * vfs_inode)
+static void wtfs_destroy_inode(struct inode * vi)
 {
-	call_rcu(&(vfs_inode->i_rcu), wtfs_i_callback);
+	call_rcu(&(vi->i_rcu), wtfs_i_callback);
 }
 
 /********************* implementation of write_inode **************************/
@@ -130,15 +130,14 @@ static void wtfs_destroy_inode(struct inode * vfs_inode)
 /*
  * routine called when the VFS needs to write an inode to disk
  *
- * @vfs_inode: the VFS inode structure
+ * @vi: the VFS inode structure
  * @wbc: a control structure which tells the writeback code what to do
  *
  * return: status
  */
-static int wtfs_write_inode(struct inode * vfs_inode,
-	struct writeback_control * wbc)
+static int wtfs_write_inode(struct inode * vi, struct writeback_control * wbc)
 {
-	struct wtfs_inode_info * info = WTFS_INODE_INFO(vfs_inode);
+	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
 	struct wtfs_inode * inode = NULL;
 	struct buffer_head * bh = NULL;
 	int ret = -EINVAL;
@@ -148,27 +147,27 @@ static int wtfs_write_inode(struct inode * vfs_inode,
 	 * note that the buffer_head is also pointing to the inode table containing
 	 * this inode, so we can directly write back this buffer_head later
 	 */
-	inode = wtfs_get_inode(vfs_inode->i_sb, vfs_inode->i_ino, &bh);
+	inode = wtfs_get_inode(vi->i_sb, vi->i_ino, &bh);
 	if (IS_ERR(inode)) {
 		ret = PTR_ERR(inode);
 		goto error;
 	}
 
 	/* write to the physical inode (still in memory) */
-	inode->inode_no = cpu_to_wtfs64(vfs_inode->i_ino);
-	inode->mode = cpu_to_wtfs32(vfs_inode->i_mode);
-	inode->uid = cpu_to_wtfs16(i_uid_read(vfs_inode));
-	inode->gid = cpu_to_wtfs16(i_gid_read(vfs_inode));
-	inode->atime = cpu_to_wtfs64(vfs_inode->i_atime.tv_sec);
-	inode->ctime = cpu_to_wtfs64(vfs_inode->i_ctime.tv_sec);
-	inode->mtime = cpu_to_wtfs64(vfs_inode->i_mtime.tv_sec);
-	switch (vfs_inode->i_mode & S_IFMT) {
+	inode->inode_no = cpu_to_wtfs64(vi->i_ino);
+	inode->mode = cpu_to_wtfs32(vi->i_mode);
+	inode->uid = cpu_to_wtfs16(i_uid_read(vi));
+	inode->gid = cpu_to_wtfs16(i_gid_read(vi));
+	inode->atime = cpu_to_wtfs64(vi->i_atime.tv_sec);
+	inode->ctime = cpu_to_wtfs64(vi->i_ctime.tv_sec);
+	inode->mtime = cpu_to_wtfs64(vi->i_mtime.tv_sec);
+	switch (vi->i_mode & S_IFMT) {
 	case S_IFDIR:
 		inode->dir_entry_count = cpu_to_wtfs64(info->dir_entry_count);
 		break;
 
 	case S_IFREG:
-		inode->file_size = cpu_to_wtfs64(i_size_read(vfs_inode));
+		inode->file_size = cpu_to_wtfs64(i_size_read(vi));
 		break;
 
 	default:
@@ -181,8 +180,8 @@ static int wtfs_write_inode(struct inode * vfs_inode,
 	if (wbc->sync_mode == WB_SYNC_ALL) {
 		sync_dirty_buffer(bh);
 		if (buffer_req(bh) && !buffer_uptodate(bh)) {
-			wtfs_error("inode %lu sync failed at %s", vfs_inode->i_ino,
-				vfs_inode->i_sb->s_id);
+			wtfs_error("inode %lu sync failed at %s", vi->i_ino,
+				vi->i_sb->s_id);
 			ret = -EIO;
 			goto error;
 		}
@@ -204,21 +203,21 @@ error:
 /*
  * routine called when the inode is evicted
  *
- * @vfs_inode: the VFS inode structure
+ * @vi: the VFS inode structure
  */
-static void wtfs_evict_inode(struct inode * vfs_inode)
+static void wtfs_evict_inode(struct inode * vi)
 {
-	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vfs_inode->i_sb);
+	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vi->i_sb);
 	struct wtfs_inode * inode = NULL;
 	struct buffer_head * bh = NULL;
 	uint64_t block, offset;
 
-	truncate_inode_pages(&(vfs_inode->i_data), 0);
-	invalidate_inode_buffers(vfs_inode);
-	clear_inode(vfs_inode);
+	truncate_inode_pages(&(vi->i_data), 0);
+	invalidate_inode_buffers(vi);
+	clear_inode(vi);
 
 	/* clear inode in inode table */
-	inode = wtfs_get_inode(vfs_inode->i_sb, vfs_inode->i_ino, &bh);
+	inode = wtfs_get_inode(vi->i_sb, vi->i_ino, &bh);
 	if (IS_ERR(inode)) {
 		goto error;
 	}
@@ -227,9 +226,9 @@ static void wtfs_evict_inode(struct inode * vfs_inode)
 	brelse(bh);
 
 	/* clear bit in bitmap */
-	block = vfs_inode->i_ino / (WTFS_DATA_SIZE * 8);
-	offset = vfs_inode->i_ino % (WTFS_DATA_SIZE * 8);
-	wtfs_clear_bitmap_bit(vfs_inode->i_sb, sbi->inode_bitmap_first,
+	block = vi->i_ino / (WTFS_DATA_SIZE * 8);
+	offset = vi->i_ino % (WTFS_DATA_SIZE * 8);
+	wtfs_clear_bitmap_bit(vi->i_sb, sbi->inode_bitmap_first,
 		block, offset);
 
 error:

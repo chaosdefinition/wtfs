@@ -48,6 +48,16 @@ typedef __le64 wtfs64_t;
 # define cpu_to_wtfs64 htole64
 #endif /* __KERNEL__ */
 
+/* bitwise operations */
+#define wtfs_set_bit(nr, addr)\
+	set_bit((nr), (volatile unsigned long *)(addr))
+#define wtfs_clear_bit(nr, addr)\
+	clear_bit((nr), (volatile unsigned long *)(addr))
+#define wtfs_test_bit(nr, addr)\
+	test_bit((nr), (const volatile unsigned long *)(addr))
+#define wtfs_find_first_zero_bit(addr, size)\
+	find_first_zero_bit((const unsigned long *)(addr), (size))
+
 /* get the size of a structure/union's member */
 #define member_size(type, member) sizeof(((type *)0)->member)
 

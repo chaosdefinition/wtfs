@@ -47,8 +47,8 @@
  *   +------------------+  +------------------+
  * 3 | 1st block bitmap |->| 2nd block bitmap |->...
  *   +------------------+  +------------------+
- * 4 | 1st inode bitmap |->| 2nd inode bitmap |->...
- *   +------------------+  +------------------+
+ * 4 | 1st inode bitmap |
+ *   +------------------+
  * 5 | data blocks...   |
  *   +------------------+
  *
@@ -58,7 +58,6 @@
  * -- inode information --
  * size of each inode:              64 bytes
  * max inodes per table:            63
- * max inodes:                      0xfffffffful
  *
  * -- bitmap information --
  * max blocks/inodes per bitmap:    4088 * 8
@@ -106,7 +105,7 @@
 #define WTFS_ROOT_INO 1
 
 /* max inode number */
-#define WTFS_INODE_MAX 0xfffffffful
+#define WTFS_INODE_MAX (WTFS_DATA_SIZE * 8)
 
 /* DEBUG macro for wtfs */
 #ifdef DEBUG
@@ -190,7 +189,7 @@ struct wtfs_inode_table
 /* structure for directory data */
 struct wtfs_dentry
 {
-	wtfs64_t inode_no;		            /* 8 bytes */
+	wtfs64_t inode_no;                  /* 8 bytes */
 	char filename[WTFS_FILENAME_MAX];   /* 56 bytes */
 };
 
@@ -239,6 +238,7 @@ struct wtfs_sb_info
 struct wtfs_inode_info
 {
 	uint64_t dir_entry_count;
+	uint64_t first_block;
 	struct inode vfs_inode;
 };
 
@@ -249,9 +249,9 @@ static inline struct wtfs_sb_info * WTFS_SB_INFO(struct super_block * vsb)
 }
 
 /* get inode_info from the VFS inode */
-static inline struct wtfs_inode_info * WTFS_INODE_INFO(struct inode * inode)
+static inline struct wtfs_inode_info * WTFS_INODE_INFO(struct inode * vi)
 {
-	return container_of(inode, struct wtfs_inode_info, vfs_inode);
+	return container_of(vi, struct wtfs_inode_info, vfs_inode);
 }
 
 /* operations */
@@ -274,6 +274,17 @@ extern int wtfs_clear_bitmap_bit(struct super_block * vsb, uint64_t entry,
 	uint64_t count, uint64_t offset);
 extern int wtfs_test_bitmap_bit(struct super_block * vsb, uint64_t entry,
 	uint64_t count, uint64_t offset);
+extern uint64_t wtfs_alloc_block(struct super_block * vsb);
+extern uint64_t wtfs_alloc_inode(struct super_block * vsb);
+extern struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode);
+extern void wtfs_free_block(struct super_block * vsb, uint64_t blk_no);
+extern void wtfs_free_inode(struct super_block * vsb, uint64_t inode_no);
+extern int wtfs_sync_super(struct super_block * vsb);
+extern uint64_t wtfs_find_inode(struct inode * dir_vi, struct dentry * dentry);
+extern int wtfs_add_entry(struct inode * dir_vi, uint64_t inode_no,
+	const char * filename, size_t length);
+extern int wtfs_delete_entry(struct inode * dir_vi, uint64_t inode_no);
+extern void wtfs_delete_inode(struct inode * vi);
 
 #endif /* __KERNEL__ */
 

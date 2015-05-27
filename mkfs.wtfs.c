@@ -22,6 +22,7 @@
 
 #include <unistd.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
@@ -32,19 +33,35 @@
 #include "wtfs.h"
 
 static int write_boot_block(int fd);
-static int write_super_block(int fd, unsigned long long blocks);
-static int write_inode_table(int fd);
-static int write_block_bitmap(int fd);
+static int write_super_block(int fd, unsigned long long blocks,
+	unsigned long long inode_tables, unsigned long long blk_bitmaps);
+static int write_inode_table(int fd, unsigned long long inode_tables);
+static int write_block_bitmap(int fd, unsigned long long inode_tables,
+	unsigned long long blk_bitmaps);
 static int write_inode_bitmap(int fd);
 static int write_root_dir(int fd);
 static void do_deep_format(int fd, unsigned long long blocks, int quiet);
 
 int main(int argc, char * const * argv)
 {
+	/* used in argument parse */
 	int opt;
+
+	/* flags */
 	int quick = 0, quiet = 0;
+
+	/* file descriptor */
 	int fd = -1;
-	unsigned long long bytes;
+
+	/* bytes and blocks of the device */
+	unsigned long long bytes, blocks;
+
+	/* inode tables */
+	unsigned long long inode_tables;
+
+	/* block bitmaps */
+	unsigned long long blk_bitmaps;
+
 	const char * usage = "Usage: mkfs.wtfs [-fq] device\n\n"
 						 "  -f                    quick format\n"
 						 "  -q                    quiet mode\n\n";
@@ -84,23 +101,28 @@ int main(int argc, char * const * argv)
 		perror("mkfs.wtfs: unable to get the device size");
 		goto error;
 	}
-	if (!quiet) {
-		printf("device %s has total %llu bytes\n", argv[optind], bytes);
+
+	/* do calculation */
+	blocks = bytes / WTFS_BLOCK_SIZE;
+	inode_tables = WTFS_DATA_SIZE * 8 / WTFS_INODE_COUNT_PER_TABLE + 1;
+	blk_bitmaps = blocks / (WTFS_DATA_SIZE * 8);
+	if (blocks % (WTFS_DATA_SIZE * 8) != 0) {
+		++blk_bitmaps;
 	}
 
 	if (write_boot_block(fd) < 0) {
 		fprintf(stderr, "mkfs.wtfs: write the bootloader block failed\n");
 		goto error;
 	}
-	if (write_super_block(fd, bytes / WTFS_BLOCK_SIZE) < 0) {
+	if (write_super_block(fd, blocks, inode_tables, blk_bitmaps) < 0) {
 		fprintf(stderr, "mkfs.wtfs: write the super block failed\n");
 		goto error;
 	}
-	if (write_inode_table(fd) < 0) {
+	if (write_inode_table(fd, inode_tables) < 0) {
 		fprintf(stderr, "mkfs.wtfs: write the inode table failed\n");
 		goto error;
 	}
-	if (write_block_bitmap(fd) < 0) {
+	if (write_block_bitmap(fd, inode_tables, blk_bitmaps) < 0) {
 		fprintf(stderr, "mkfs.wtfs: write the block bitmap failed\n");
 		goto error;
 	}
@@ -117,7 +139,7 @@ int main(int argc, char * const * argv)
 			printf("quick format completed\n");
 		}
 	} else {
-		do_deep_format(fd, bytes / WTFS_BLOCK_SIZE, quiet);
+		do_deep_format(fd, blocks, quiet);
 	}
 
 	close(fd);
@@ -143,7 +165,8 @@ static int write_boot_block(int fd)
 	}
 }
 
-static int write_super_block(int fd, unsigned long long blocks)
+static int write_super_block(int fd, unsigned long long blocks,
+	unsigned long long inode_tables, unsigned long long blk_bitmaps)
 {
 	struct wtfs_super_block sb = {
 		.version = cpu_to_wtfs64(WTFS_VERSION),
@@ -151,13 +174,13 @@ static int write_super_block(int fd, unsigned long long blocks)
 		.block_size = cpu_to_wtfs64(WTFS_BLOCK_SIZE),
 		.block_count = cpu_to_wtfs64(blocks),
 		.inode_table_first = cpu_to_wtfs64(WTFS_RB_INODE_TABLE),
-		.inode_table_count = cpu_to_wtfs64(1),
+		.inode_table_count = cpu_to_wtfs64(inode_tables),
 		.block_bitmap_first = cpu_to_wtfs64(WTFS_RB_BLOCK_BITMAP),
-		.block_bitmap_count = cpu_to_wtfs64(1),
+		.block_bitmap_count = cpu_to_wtfs64(blk_bitmaps),
 		.inode_bitmap_first = cpu_to_wtfs64(WTFS_RB_INODE_BITMAP),
 		.inode_bitmap_count = cpu_to_wtfs64(1),
 		.inode_count = cpu_to_wtfs64(1),
-		.free_block_count = cpu_to_wtfs64(blocks - 6)
+		.free_block_count = cpu_to_wtfs64(blocks - inode_tables - blk_bitmaps - 4)
 	};
 
 	lseek(fd, WTFS_RB_SUPER * WTFS_BLOCK_SIZE, SEEK_SET);
@@ -170,9 +193,16 @@ static int write_super_block(int fd, unsigned long long blocks)
 	return 0;
 }
 
-static int write_inode_table(int fd)
+/*
+ * there are at most 4088 * 8 inodes, which requires only 520 inode tables,
+ * so we pre-build the whole inode table for the device
+ */
+static int write_inode_table(int fd, unsigned long long inode_tables)
 {
+	/* buffer to write */
 	struct wtfs_inode_table inode_table;
+
+	/* inode for root dir */
 	struct wtfs_inode inode = {
 		.inode_no = cpu_to_wtfs64(WTFS_ROOT_INO),
 		.dir_entry_count = cpu_to_wtfs64(2),
@@ -186,27 +216,133 @@ static int write_inode_table(int fd)
 		.gid = cpu_to_wtfs16(getgid())
 	};
 
-	inode_table.inodes[0] = inode;
-	lseek(fd, WTFS_RB_INODE_TABLE * WTFS_BLOCK_SIZE, SEEK_SET);
-	if (write(fd, &inode_table, sizeof(inode_table)) != sizeof(inode_table)) {
-		return -EIO;
-	} else {
-		return 0;
+	/* block number index array */
+	unsigned long long * index = NULL;
+	unsigned long long i;
+	int ret = -EINVAL;
+
+	/* construct index */
+	index = (unsigned long long *)calloc(inode_tables + 1, sizeof(unsigned long long));
+	if (index == NULL) {
+		ret = -ENOMEM;
+		goto error;
 	}
+	index[0] = WTFS_RB_INODE_TABLE;
+	for (i = 1; i < inode_tables; ++i) {
+		index[i] = WTFS_DB_FIRST + i;
+	}
+
+	/* write 1st inode table */
+	memset(&inode_table, 0, sizeof(inode_table));
+	inode_table.inodes[0] = inode;
+	inode_table.next = wtfs64_to_cpu(index[1]);
+	lseek(fd, index[0] * WTFS_BLOCK_SIZE, SEEK_SET);
+	if (write(fd, &inode_table, sizeof(inode_table)) != sizeof(inode_table)) {
+		ret = -EIO;
+		goto error;
+	}
+
+	/* write remaining inode tables */
+	memset(&inode_table, 0, sizeof(inode_table));
+	for (i = 1; i < inode_tables; ++i) {
+		inode_table.next = wtfs64_to_cpu(index[i + 1]);
+		lseek(fd, index[i] * WTFS_BLOCK_SIZE, SEEK_SET);
+		if (write(fd, &inode_table, sizeof(inode_table)) != sizeof(inode_table)) {
+			ret = -EIO;
+			goto error;
+		}
+	}
+
+	free(index);
+	return 0;
+
+error:
+	if (index != NULL) {
+		free(index);
+	}
+	return ret;
 }
 
-static int write_block_bitmap(int fd)
+/*
+ * since the device size is fixed,
+ * we pre-build the whole block bitmap for the device
+ */
+static int write_block_bitmap(int fd, unsigned long long inode_tables,
+	unsigned long long blk_bitmaps)
 {
-	struct wtfs_data_block blk_bitmap = {
-		.data = { 0x3f }
-	};
+	/* full bytes fill 0xff */
+	unsigned long long full_bytes = (blk_bitmaps + inode_tables + 4) / 8;
 
-	lseek(fd, WTFS_RB_BLOCK_BITMAP * WTFS_BLOCK_SIZE, SEEK_SET);
-	if (write(fd, &blk_bitmap, sizeof(blk_bitmap)) != sizeof(blk_bitmap)) {
-		return -EIO;
-	} else {
-		return 0;
+	/* half byte fill (1 << half_byte) - 1 */
+	unsigned long long half_byte = (blk_bitmaps + inode_tables + 4) % 8;
+
+	/* last full bitmap */
+	unsigned long long full = full_bytes / WTFS_DATA_SIZE;
+
+	/* full bytes in half-full bitmap */
+	unsigned long long half_full = full_bytes % WTFS_DATA_SIZE;
+
+	/* block number index array */
+	unsigned long long * index;
+	unsigned long long i, j;
+	struct wtfs_data_block blk;
+	int ret = -EINVAL;
+
+	/* construct index */
+	index = (unsigned long long *)calloc(blk_bitmaps + 1, sizeof(unsigned long long));
+	if (index == NULL) {
+		ret = -ENOMEM;
+		goto error;
 	}
+	index[0] = WTFS_RB_BLOCK_BITMAP;
+	for (i = 1; i < blk_bitmaps; ++i) {
+		index[i] = WTFS_DB_FIRST + inode_tables - 1 + i;
+	}
+
+	/* write full block bitmaps */
+	memset(&blk, 0xff, sizeof(blk));
+	for (i = 0; i < full; ++i) {
+		blk.next = cpu_to_wtfs64(index[i + 1]);
+		lseek(fd, index[i] * WTFS_BLOCK_SIZE, SEEK_SET);
+		if (write(fd, &blk, sizeof(blk)) != sizeof(blk)) {
+			ret = -EIO;
+			goto error;
+		}
+	}
+
+	/* write half-full block bitmap */
+	memset(&blk, 0, sizeof(blk));
+	for (j = 0; j < half_full; ++j) {
+		blk.data[j] = 0xff;
+	}
+	blk.data[j] = (1 << half_byte) - 1;
+	blk.next = cpu_to_wtfs64(index[i + 1]);
+	lseek(fd, index[i] * WTFS_BLOCK_SIZE, SEEK_SET);
+	if (write(fd, &blk, sizeof(blk)) != sizeof(blk)) {
+		ret = -EIO;
+		goto error;
+	}
+	++i;
+
+	/* write empty bitmaps */
+	memset(&blk, 0, sizeof(blk));
+	for (; i < blk_bitmaps; ++i) {
+		blk.next = cpu_to_wtfs64(index[i + 1]);
+		lseek(fd, index[i] * WTFS_BLOCK_SIZE, SEEK_SET);
+		if (write(fd, &blk, sizeof(blk)) != sizeof(blk)) {
+			ret = -EIO;
+			goto error;
+		}
+	}
+
+	free(index);
+	return 0;
+
+error:
+	if (index != NULL) {
+		free(index);
+	}
+	return ret;
 }
 
 static int write_inode_bitmap(int fd)

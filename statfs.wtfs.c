@@ -89,13 +89,6 @@ error:
 
 static int read_boot_block(int fd)
 {
-	struct wtfs_data_block block;
-
-	lseek(fd, WTFS_RB_BOOT * WTFS_BLOCK_SIZE, SEEK_SET);
-	if (read(fd, &block, sizeof(block)) != sizeof(block)) {
-		return -EIO;
-	}
-
 	/* do nothing */
 	return 0;
 }
@@ -133,13 +126,49 @@ static int read_super_block(int fd)
 
 static int read_inode_table(int fd)
 {
-	/* do nothing */
+	struct wtfs_data_block bitmap;
+	unsigned long long next = WTFS_RB_INODE_TABLE;
+	int i = 0;
+
+	while (next != 0) {
+		lseek(fd, next * WTFS_BLOCK_SIZE, SEEK_SET);
+		if (read(fd, &bitmap, sizeof(bitmap)) != sizeof(bitmap)) {
+			return -EIO;
+		}
+
+		if (next == WTFS_RB_INODE_TABLE) {
+			printf("inode table\n%llu", next);
+		} else {
+			printf("->%llu", next);
+		}
+		next = wtfs64_to_cpu(bitmap.next);
+		++i;
+	}
+	printf("\ntotal %d tables\n\n", i);
 	return 0;
 }
 
 static int read_block_bitmap(int fd)
 {
-	/* do nothing */
+	struct wtfs_data_block bitmap;
+	unsigned long long next = WTFS_RB_BLOCK_BITMAP;
+	int i = 0;
+
+	while (next != 0) {
+		lseek(fd, next * WTFS_BLOCK_SIZE, SEEK_SET);
+		if (read(fd, &bitmap, sizeof(bitmap)) != sizeof(bitmap)) {
+			return -EIO;
+		}
+
+		if (next == WTFS_RB_BLOCK_BITMAP) {
+			printf("block bitmap\n%llu", next);
+		} else {
+			printf("->%llu", next);
+		}
+		next = wtfs64_to_cpu(bitmap.next);
+		++i;
+	}
+	printf("\ntotal %d bitmaps\n\n", i);
 	return 0;
 }
 
@@ -152,18 +181,26 @@ static int read_inode_bitmap(int fd)
 static int read_root_dir(int fd)
 {
 	struct wtfs_data_block root_dir;
-	int i = 0;
+	int i;
+	unsigned long long next = WTFS_DB_FIRST;
 
-	lseek(fd, WTFS_DB_FIRST * WTFS_BLOCK_SIZE, SEEK_SET);
-	if (read(fd, &root_dir, sizeof(root_dir)) != sizeof(root_dir)) {
-		return -EIO;
-	}
+	while (next != 0) {
+		lseek(fd, next * WTFS_BLOCK_SIZE, SEEK_SET);
+		if (read(fd, &root_dir, sizeof(root_dir)) != sizeof(root_dir)) {
+			return -EIO;
+		}
 
-	printf("root directory\n");
-	while (root_dir.entries[i].inode_no != 0) {
-		printf("%llu\t\t%s\n", root_dir.entries[i].inode_no,
-			root_dir.entries[i].filename);
-		++i;
+		if (next == WTFS_DB_FIRST) {
+			printf("root directory\n");
+		}
+
+		i = 0;
+		while (root_dir.entries[i].inode_no != 0) {
+			printf("%llu\t\t%s\n", root_dir.entries[i].inode_no,
+				root_dir.entries[i].filename);
+			++i;
+		}
+		next = wtfs64_to_cpu(root_dir.next);
 	}
 	printf("\n");
 
