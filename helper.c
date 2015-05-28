@@ -20,8 +20,6 @@
  * along with wtfs.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "tricks.h"
-
 #include <linux/fs.h>
 #include <linux/vfs.h>
 #include <linux/buffer_head.h>
@@ -31,7 +29,7 @@
 
 /* declaration of internal helper functions */
 static uint64_t __wtfs_alloc_obj(struct super_block * vsb, uint64_t entry);
-static uint64_t __wtfs_free_obj(struct super_block * vsb, uint64_t entry,
+static void __wtfs_free_obj(struct super_block * vsb, uint64_t entry,
 	uint64_t no);
 
 /********************* implementation of wtfs_iget ****************************/
@@ -81,7 +79,6 @@ struct inode * wtfs_iget(struct super_block * vsb, uint64_t inode_no)
 
 	/* now let's fill the VFS inode */
 	vi->i_ino = (unsigned long)wtfs64_to_cpu(inode->inode_no);
-	vi->i_nlink = 1;
 	vi->i_mode = (umode_t)wtfs32_to_cpu(inode->mode);
 	vi->i_blocks = (blkcnt_t)wtfs64_to_cpu(inode->block_count);
 	vi->i_atime.tv_sec = (__kernel_time_t)wtfs64_to_cpu(inode->atime);
@@ -147,7 +144,7 @@ struct wtfs_inode * wtfs_get_inode(struct super_block * vsb, uint64_t inode_no,
 	int ret = -EINVAL;
 
 	/* first check if inode number is valid */
-	if (is_ino_valid(vsb, inode_no) != 0) {
+	if (!is_ino_valid(vsb, inode_no)) {
 		wtfs_error("invalid inode number %llu\n", inode_no);
 		goto error;
 	}
@@ -183,7 +180,7 @@ error:
  * @vsb: the VFS super block
  * @inode_no: inode number
  *
- * return: 0 if valid, a nonzero number otherwise
+ * return: 1 if valid, 0 otherwise
  */
 int is_ino_valid(struct super_block * vsb, uint64_t inode_no)
 {
@@ -224,29 +221,24 @@ struct buffer_head * wtfs_get_linked_block(struct super_block * vsb,
 		goto error;
 	}
 
-	/* read the entry block into buffer */
-	if ((bh = sb_bread(vsb, entry)) == NULL) {
-		wtfs_error("unable to read the block %llu\n", entry);
-		goto error;
-	}
-
 	/* find the count-th block */
-	block = (struct wtfs_data_block *)bh->b_data;
-	next = wtfs64_to_cpu(block->next);
-	for (i = 0; i < count; ++i) {
-		brelse(bh);
-		if (next < WTFS_RB_INODE_TABLE || next >= sbi->block_count) {
-			wtfs_error("invalid block number %llu in linked list\n", next);
-			goto error;
-		}
+	next = entry;
+	i = 0;
+	while (next != 0) {
 		if ((bh = sb_bread(vsb, next)) == NULL) {
-			wtfs_error("unable to read the block %llu\n", next);
+			wtfs_error("unable to read the block %llu\n", entry);
 			goto error;
 		}
-		block = (struct wtfs_data_block *)bh->b_data;
-		next = wtfs64_to_cpu(block->next);
+		if (i == count) {
+			return bh;
+		} else {
+			block = (struct wtfs_data_block *)bh->b_data;
+			++i;
+			next = wtfs64_to_cpu(block->next);
+			brelse(bh);
+		}
 	}
-	return bh;
+	return ERR_PTR(ret);
 
 error:
 	if (bh != NULL) {
@@ -257,6 +249,16 @@ error:
 
 /********************* implementation of bitmap operations ********************/
 
+/*
+ * set a bit in bitmap
+ *
+ * @vsb: the VSF super block structure
+ * @entry: block number of the first bitmap
+ * @count: index of bitmap
+ * @offset: index of the bit in bitmap
+ *
+ * return: 0 on success, error code otherwise
+ */
 int wtfs_set_bitmap_bit(struct super_block * vsb, uint64_t entry,
 	uint64_t count, uint64_t offset)
 {
@@ -275,6 +277,16 @@ int wtfs_set_bitmap_bit(struct super_block * vsb, uint64_t entry,
 	return 0;
 }
 
+/*
+ * clear a bit in bitmap
+ *
+ * @vsb: the VSF super block structure
+ * @entry: block number of the first bitmap
+ * @count: index of bitmap
+ * @offset: index of the bit in bitmap
+ *
+ * return: 0 on success, error code otherwise
+ */
 int wtfs_clear_bitmap_bit(struct super_block * vsb, uint64_t entry,
 		uint64_t count, uint64_t offset)
 {
@@ -293,6 +305,16 @@ int wtfs_clear_bitmap_bit(struct super_block * vsb, uint64_t entry,
 	return 0;
 }
 
+/*
+ * test a bit in bitmap
+ *
+ * @vsb: the VSF super block structure
+ * @entry: block number of the first bitmap
+ * @count: index of bitmap
+ * @offset: index of the bit in bitmap
+ *
+ * return: bit status (0 or 1) on success, error code otherwise
+ */
 int wtfs_test_bitmap_bit(struct super_block * vsb, uint64_t entry,
 		uint64_t count, uint64_t offset)
 {
@@ -323,7 +345,6 @@ int wtfs_test_bitmap_bit(struct super_block * vsb, uint64_t entry,
 struct buffer_head * wtfs_init_block(struct super_block * vsb,
 	struct buffer_head * prev, uint64_t blk_no)
 {
-	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	struct wtfs_data_block * blk = NULL;
 	struct buffer_head * bh = NULL;
 	int ret = -EINVAL;
@@ -334,7 +355,7 @@ struct buffer_head * wtfs_init_block(struct super_block * vsb,
 	}
 
 	blk = (struct wtfs_data_block *)bh->b_data;
-	memset(blk->data, 0, sizeof(blk->data));
+	memset(blk, 0, sizeof(struct wtfs_data_block));
 	mark_buffer_dirty(bh);
 
 	if (prev != NULL) {
@@ -369,44 +390,57 @@ uint64_t wtfs_alloc_block(struct super_block * vsb)
 	if (blk_no != 0) {
 		--WTFS_SB_INFO(vsb)->free_block_count;
 		wtfs_sync_super(vsb);
+
+		wtfs_debug("free blocks: %llu\n", WTFS_SB_INFO(vsb)->free_block_count);
 	}
 	return blk_no;
 }
 
+/*
+ * internal function used to alloc a free block/inode
+ *
+ * @vsb: the VFS super block structure
+ * @entry: block number of the first block/inode bitmap
+ *
+ * return: block/inode  number, 0 on fail
+ */
 static uint64_t __wtfs_alloc_obj(struct super_block * vsb, uint64_t entry)
 {
-	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	struct wtfs_data_block * bitmap = NULL;
 	struct buffer_head * bh = NULL;
 	uint64_t next, i, j;
 
 	/* find the first zero bit in bitmaps */
 	next = entry;
-	i = 0;
-	do {
+	i = 0; /* bitmap counter */
+	while (next != 0) {
 		if ((bh = sb_bread(vsb, next)) == NULL) {
 			wtfs_error("unable to read the bitmap %llu\n", next);
 			goto error;
 		}
 		bitmap = (struct wtfs_data_block *)bh->b_data;
-		next = wtfs64_to_cpu(bitmap->next);
+
+		wtfs_debug("finding first zero bit in bitmap %llu\n", next);
 		j = wtfs_find_first_zero_bit(bitmap->data, WTFS_DATA_SIZE * 8);
 		if (j < WTFS_DATA_SIZE * 8) {
+			wtfs_debug("find a zero bit %llu in bitmap %llu\n", j, next);
 			wtfs_set_bit(j, bitmap->data);
 			mark_buffer_dirty(bh);
+			brelse(bh);
 			break;
 		}
-		++i;
-		brelse(bh);
-	} while (next > WTFS_DB_FIRST && next < sbi->block_count);
 
-	/* obj used up or error */
-	if (next <= WTFS_DB_FIRST || next >= sbi->block_count) {
+		++i;
+		next = wtfs64_to_cpu(bitmap->next);
+		brelse(bh);
+	}
+
+	/* obj used up */
+	if (next == 0) {
 		return 0;
 	}
 
 	j += i * WTFS_DATA_SIZE * 8;
-	brelse(bh);
 	return j;
 
 error:
@@ -416,7 +450,7 @@ error:
 	return 0;
 }
 
-/********************* implementation of wtfs_alloc_inode *********************/
+/********************* implementation of wtfs_alloc_free_inode ****************/
 
 /*
  * alloc a free inode
@@ -425,7 +459,7 @@ error:
  *
  * return: inode number, 0 on fail
  */
-uint64_t wtfs_alloc_inode(struct super_block * vsb)
+uint64_t wtfs_alloc_free_inode(struct super_block * vsb)
 {
 	uint64_t inode_no;
 
@@ -433,6 +467,8 @@ uint64_t wtfs_alloc_inode(struct super_block * vsb)
 	if (inode_no != 0) {
 		++WTFS_SB_INFO(vsb)->inode_count;
 		wtfs_sync_super(vsb);
+
+		wtfs_debug("inodes: %llu\n", WTFS_SB_INFO(vsb)->inode_count);
 	}
 	return inode_no;
 }
@@ -445,7 +481,7 @@ uint64_t wtfs_alloc_inode(struct super_block * vsb)
  * @dir_vi: directory inode
  * @mode: file mode
  *
- * return: the new inode or error
+ * return: the new inode or error code
  */
 struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode)
 {
@@ -455,6 +491,7 @@ struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode)
 	struct wtfs_inode_info * info = NULL;
 	int ret = -EINVAL;
 
+	/* alloc a new VFS inode */
 	vi = new_inode(vsb);
 	if (vi == NULL) {
 		ret = -ENOMEM;
@@ -462,17 +499,19 @@ struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode)
 	}
 	info = WTFS_INODE_INFO(vi);
 
-	switch (vi->i_mode) {
+	/* set file type relevant stuffs */
+	switch (mode & S_IFMT) {
 	case S_IFDIR:
 		vi->i_op = &wtfs_dir_inops;
 		vi->i_fop = &wtfs_dir_ops;
 		info->dir_entry_count = 0;
+		i_size_write(vi, sbi->block_size);
 		break;
 
 	case S_IFREG:
 		vi->i_op = &wtfs_file_inops;
 		vi->i_fop = &wtfs_file_ops;
-		vi->i_size = 0;
+		i_size_write(vi, 0);
 		break;
 
 	default:
@@ -480,13 +519,15 @@ struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode)
 		goto error;
 	}
 
-	vi->i_ino = wtfs_alloc_inode(vsb);
+	/* alloc an inode number */
+	vi->i_ino = wtfs_alloc_free_inode(vsb);
 	if (vi->i_ino == 0) {
 		wtfs_error("inode numbers have used up\n");
 		ret = -ENOSPC;
 		goto error;
 	}
 
+	/* alloc a data block and initialize it */
 	info->first_block = wtfs_alloc_block(vsb);
 	if (info->first_block == 0) {
 		wtfs_error("free blocks have used up\n");
@@ -495,9 +536,7 @@ struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode)
 	}
 	wtfs_init_block(vsb, NULL, info->first_block);
 
-	++sbi->inode_count;
-	wtfs_sync_super(vsb);
-
+	/* set other things */
 	inode_init_owner(vi, dir_vi, mode);
 	vi->i_atime = vi->i_ctime = vi->i_mtime = CURRENT_TIME_SEC;
 	vi->i_blocks = 1;
@@ -507,6 +546,7 @@ struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode)
 	return vi;
 
 error:
+	/* we need to return the inode number and block on fail */
 	if (vi != NULL) {
 		if (info->first_block != 0) {
 			wtfs_free_block(vsb, info->first_block);
@@ -521,13 +561,29 @@ error:
 
 /********************* implementation of wtfs_free_block **********************/
 
+/*
+ * free a block
+ *
+ * @vsb: the VFS super block structure
+ * @blk_no: the block number
+ */
 void wtfs_free_block(struct super_block * vsb, uint64_t blk_no)
 {
+
 	__wtfs_free_obj(vsb, WTFS_SB_INFO(vsb)->block_bitmap_first, blk_no);
-	++WTFS_SB_INFO(vsb)->free_block_count;
+	++WTFS_SB_INFO(vsb)->free_block_count; /* increase free block counter */
 	wtfs_sync_super(vsb);
+
+	wtfs_debug("free blocks: %llu\n", WTFS_SB_INFO(vsb)->free_block_count);
 }
 
+/*
+ * internal function used to free a block/inode
+ *
+ * @vsb: the VFS super block structure
+ * @entry: block number of the first block/inode bitmap
+ * @no: the block/inode number
+ */
 static void __wtfs_free_obj(struct super_block * vsb, uint64_t entry,
 	uint64_t no)
 {
@@ -540,11 +596,19 @@ static void __wtfs_free_obj(struct super_block * vsb, uint64_t entry,
 
 /********************* implementation of wtfs_free_inode **********************/
 
+/*
+ * free an inode
+ *
+ * @vsb: the VFS super block structure
+ * @inode_no: the inode number
+ */
 void wtfs_free_inode(struct super_block * vsb, uint64_t inode_no)
 {
 	__wtfs_free_obj(vsb, WTFS_SB_INFO(vsb)->inode_bitmap_first, inode_no);
-	--WTFS_SB_INFO(vsb)->inode_count;
+	--WTFS_SB_INFO(vsb)->inode_count; /* decrease inode counter */
 	wtfs_sync_super(vsb);
+
+	wtfs_debug("inodes: %llu\n", WTFS_SB_INFO(vsb)->inode_count);
 }
 
 /********************* implementation of wtfs_sync_super **********************/
@@ -582,7 +646,6 @@ int wtfs_sync_super(struct super_block * vsb)
 	sb->inode_count = cpu_to_wtfs64(sbi->inode_count);
 	sb->free_block_count = cpu_to_wtfs64(sbi->free_block_count);
 	mark_buffer_dirty(bh);
-	sync_dirty_buffer(bh);
 	brelse(bh);
 
 	return 0;
@@ -607,16 +670,17 @@ error:
 uint64_t wtfs_find_inode(struct inode * dir_vi, struct dentry * dentry)
 {
 	struct super_block * vsb = dir_vi->i_sb;
-	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(dir_vi);
 	struct wtfs_data_block * block = NULL;
 	struct buffer_head * bh = NULL;
 	uint64_t i, next = info->first_block;
 
-	if (dentry->d_name.len > WTFS_FILENAME_MAX) {
+	/* first check if name is too long */
+	if (dentry->d_name.len >= WTFS_FILENAME_MAX) {
 		goto error;
 	}
 
+	/* do search */
 	while (next != 0) {
 		if ((bh = sb_bread(vsb, next)) == NULL) {
 			wtfs_error("unable to read the block %llu\n", next);
@@ -634,6 +698,7 @@ uint64_t wtfs_find_inode(struct inode * dir_vi, struct dentry * dentry)
 		next = wtfs64_to_cpu(block->next);
 		brelse(bh);
 	}
+	return 0;
 
 error:
 	if (bh != NULL) {
@@ -652,7 +717,7 @@ error:
  * @filename: name of the new entry
  * @length: size of name
  *
- * return: status
+ * return: 0 on success, error code otherwise
  */
 int wtfs_add_entry(struct inode * dir_vi, uint64_t inode_no,
 	const char * filename, size_t length)
@@ -664,12 +729,13 @@ int wtfs_add_entry(struct inode * dir_vi, uint64_t inode_no,
 	uint64_t i, next = dir_info->first_block, blk_no = 0;
 	int ret = -EINVAL;
 
+	/* check name */
 	if (length == 0) {
 		wtfs_error("no dentry name specified\n");
 		ret = -ENOENT;
 		goto error;
 	}
-	if (length > WTFS_FILENAME_MAX) {
+	if (length >= WTFS_FILENAME_MAX) {
 		wtfs_error("dentry name too long %s\n", filename);
 		ret = -ENAMETOOLONG;
 		goto error;
@@ -714,12 +780,14 @@ int wtfs_add_entry(struct inode * dir_vi, uint64_t inode_no,
 		bh2 = NULL;
 		goto error;
 	}
-	brelse(bh);
+	brelse(bh); /* now we can release the previous block */
 	block = (struct wtfs_data_block *)bh2->b_data;
 	block->entries[0].inode_no = inode_no;
 	strncpy(block->entries[0].filename, filename, length);
 	mark_buffer_dirty(bh2);
 	brelse(bh2);
+
+	/* update parent directory's information */
 	dir_vi->i_ctime = dir_vi->i_mtime = CURRENT_TIME_SEC;
 	++dir_vi->i_blocks;
 	i_size_write(dir_vi, i_size_read(dir_vi) + WTFS_SB_INFO(vsb)->block_size);
@@ -748,7 +816,7 @@ error:
  * @dir_vi: the VFS inode of the directory
  * @inode_no: inode number of the entry to delete
  *
- * return: status
+ * return: 0 on success, error code otherwise
  */
 int wtfs_delete_entry(struct inode * dir_vi, uint64_t inode_no)
 {
@@ -768,10 +836,13 @@ int wtfs_delete_entry(struct inode * dir_vi, uint64_t inode_no)
 		block = (struct wtfs_data_block *)bh->b_data;
 		for (i = 0; i < WTFS_INODE_COUNT_PER_TABLE; ++i) {
 			if (block->entries[i].inode_no == inode_no) {
-				block->entries[i].inode_no = 0;
+				memset(&(block->entries[i]), 0, sizeof(struct wtfs_dentry));
 				mark_buffer_dirty(bh);
 				brelse(bh);
+
+				/* also, update parent dir's info */
 				dir_vi->i_ctime = dir_vi->i_mtime = CURRENT_TIME_SEC;
+				--dir_info->dir_entry_count;
 				mark_inode_dirty(dir_vi);
 				return 0;
 			}
@@ -836,8 +907,9 @@ out:
 			goto error;
 		}
 		block = (struct wtfs_data_block *)bh->b_data;
+		i = wtfs64_to_cpu(block->next);
 		wtfs_free_block(vsb, next);
-		next = wtfs64_to_cpu(table->next);
+		next = i;
 		brelse(bh);
 	}
 

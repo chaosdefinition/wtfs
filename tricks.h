@@ -41,8 +41,9 @@
 # define CONFIG_SLOB
 #endif /* CONFIG_SLOB */
 
+/* disable assembly */
 #ifdef __ASSEMBLY__
 # undef __ASSEMBLY__
-#endif
+#endif /* __ASSEMBLY__ */
 
 #endif /* WTFS_TRICKS_H_ */

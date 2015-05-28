@@ -85,6 +85,9 @@
 /* max length of filename in wtfs */
 #define WTFS_FILENAME_MAX 56
 
+/* max dentry count per block in wtfs */
+#define WTFS_DENTRY_COUNT_PER_BLOCK 63
+
 /*
  * size of real data that each block can contain (except boot and super block)
  * we need the last 8 bytes as a pointer to another block
@@ -116,13 +119,14 @@
 #ifdef WTFS_DEBUG
 # define wtfs_debug(fmt, ...)\
 	printk(KERN_DEBUG "[wtfs] at %s:%d %s: " fmt,\
-	__FILE__, __LINE__, __FUNC__, ##__VA_ARGS__)
+	__FILE__, __LINE__, __func__, ##__VA_ARGS__)
 # define wtfs_error(fmt, ...)\
 	printk(KERN_ERR "[wtfs]: " fmt, ##__VA_ARGS__)
 # define wtfs_info(fmt, ...)\
 	printk(KERN_INFO "[wtfs]: " fmt, ##__VA_ARGS__)
 #else
-# define wtfs_debug(fmt, ...) {}
+# define wtfs_debug(fmt, ...)\
+	no_printk(fmt, ##__VA_ARGS__)
 # define wtfs_error(fmt, ...)\
 	no_printk(fmt, ##__VA_ARGS__)
 # define wtfs_info(fmt, ...)\
@@ -274,8 +278,10 @@ extern int wtfs_clear_bitmap_bit(struct super_block * vsb, uint64_t entry,
 	uint64_t count, uint64_t offset);
 extern int wtfs_test_bitmap_bit(struct super_block * vsb, uint64_t entry,
 	uint64_t count, uint64_t offset);
+extern struct buffer_head * wtfs_init_block(struct super_block * vsb,
+	struct buffer_head * prev, uint64_t blk_no);
 extern uint64_t wtfs_alloc_block(struct super_block * vsb);
-extern uint64_t wtfs_alloc_inode(struct super_block * vsb);
+extern uint64_t wtfs_alloc_free_inode(struct super_block * vsb);
 extern struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode);
 extern void wtfs_free_block(struct super_block * vsb, uint64_t blk_no);
 extern void wtfs_free_inode(struct super_block * vsb, uint64_t inode_no);

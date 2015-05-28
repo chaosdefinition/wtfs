@@ -52,6 +52,7 @@ int main(int argc, char * const * argv)
 		goto error;
 	}
 
+	/* read blocks */
 	if (read_boot_block(fd) < 0) {
 		fprintf(stderr, "statfs.wtfs: unable to read the bootloader block\n");
 		goto error;
@@ -174,7 +175,20 @@ static int read_block_bitmap(int fd)
 
 static int read_inode_bitmap(int fd)
 {
-	/* do nothing */
+	struct wtfs_data_block bitmap;
+	int i;
+
+	lseek(fd, WTFS_RB_INODE_BITMAP * WTFS_BLOCK_SIZE, SEEK_SET);
+	if (read(fd, &bitmap, sizeof(bitmap)) != sizeof(bitmap)) {
+		return -EIO;
+	}
+
+	printf("inode bitmap\n");
+	for (i = 0; i < WTFS_DATA_SIZE; ++i) {
+		printf("%x", bitmap.data[i]);
+	}
+	printf("\n\n");
+
 	return 0;
 }
 
@@ -194,11 +208,11 @@ static int read_root_dir(int fd)
 			printf("root directory\n");
 		}
 
-		i = 0;
-		while (root_dir.entries[i].inode_no != 0) {
-			printf("%llu\t\t%s\n", root_dir.entries[i].inode_no,
-				root_dir.entries[i].filename);
-			++i;
+		for (i = 0; i < WTFS_DENTRY_COUNT_PER_BLOCK; ++i) {
+			if (root_dir.entries[i].inode_no != 0) {
+				printf("%llu  %s\n", root_dir.entries[i].inode_no,
+					root_dir.entries[i].filename);
+			}
 		}
 		next = wtfs64_to_cpu(root_dir.next);
 	}

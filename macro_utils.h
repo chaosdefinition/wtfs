@@ -58,6 +58,12 @@ typedef __le64 wtfs64_t;
 #define wtfs_find_first_zero_bit(addr, size)\
 	find_first_zero_bit((const unsigned long *)(addr), (size))
 
+/* int comparator */
+#define wtfs_min(a, b) min((uint64_t)(a), (uint64_t)(b))
+#define wtfs_max(a, b) max((uint64_t)(a), (uint64_t)(b))
+#define wtfs_min3(a, b, c) min3((uint64_t)(a), (uint64_t)(b), (uint64_t)(c))
+#define wtfs_max3(a, b, c) max3((uint64_t)(a), (uint64_t)(b), (uint64_t)(c))
+
 /* get the size of a structure/union's member */
 #define member_size(type, member) sizeof(((type *)0)->member)
 

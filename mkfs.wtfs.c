@@ -110,6 +110,7 @@ int main(int argc, char * const * argv)
 		++blk_bitmaps;
 	}
 
+	/* do format */
 	if (write_boot_block(fd) < 0) {
 		fprintf(stderr, "mkfs.wtfs: write the bootloader block failed\n");
 		goto error;
@@ -222,7 +223,8 @@ static int write_inode_table(int fd, unsigned long long inode_tables)
 	int ret = -EINVAL;
 
 	/* construct index */
-	index = (unsigned long long *)calloc(inode_tables + 1, sizeof(unsigned long long));
+	index = (unsigned long long *)calloc(inode_tables + 1,
+		sizeof(unsigned long long));
 	if (index == NULL) {
 		ret = -ENOMEM;
 		goto error;
@@ -289,7 +291,8 @@ static int write_block_bitmap(int fd, unsigned long long inode_tables,
 	int ret = -EINVAL;
 
 	/* construct index */
-	index = (unsigned long long *)calloc(blk_bitmaps + 1, sizeof(unsigned long long));
+	index = (unsigned long long *)calloc(blk_bitmaps + 1,
+		sizeof(unsigned long long));
 	if (index == NULL) {
 		ret = -ENOMEM;
 		goto error;
@@ -348,7 +351,7 @@ error:
 static int write_inode_bitmap(int fd)
 {
 	struct wtfs_data_block inode_bitmap = {
-		.data = { 0x01 }
+		.data = { 0x03 }
 	};
 
 	lseek(fd, WTFS_RB_INODE_BITMAP * WTFS_BLOCK_SIZE, SEEK_SET);

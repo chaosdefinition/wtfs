@@ -20,8 +20,6 @@
  * along with wtfs.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "tricks.h"
-
 #include <linux/fs.h>
 #include <linux/vfs.h>
 #include <linux/mount.h>
@@ -42,6 +40,7 @@ static int wtfs_setattr(struct dentry * dentry, struct iattr * attr);
 static int wtfs_getattr(struct vfsmount * mnt, struct dentry * dentry,
 	struct kstat * stat);
 
+/* inode operations for directory */
 const struct inode_operations wtfs_dir_inops = {
 	.create = wtfs_create,
 	.lookup = wtfs_lookup,
@@ -53,6 +52,7 @@ const struct inode_operations wtfs_dir_inops = {
 	.getattr = wtfs_getattr
 };
 
+/* inode operations for regular file */
 const struct inode_operations wtfs_file_inops = {
 	.setattr = wtfs_setattr,
 	.getattr = wtfs_getattr
@@ -60,16 +60,33 @@ const struct inode_operations wtfs_file_inops = {
 
 /********************* implementation of create *******************************/
 
+/*
+ * routine called to create a new regular file
+ *
+ * @dir_vi: the VFS inode of the parent directory
+ * @dentry: dentry of the file to create
+ * @mode: file mode
+ * @excl: whether to fail if the file exists (ignored here)
+ *
+ * return: 0 on success, error code otherwise
+ */
 static int wtfs_create(struct inode * dir_vi, struct dentry * dentry,
 	umode_t mode, bool excl)
 {
 	struct inode * vi = NULL;
 
+	wtfs_debug("create called, dir inode %lu, file '%s'\n", dir_vi->i_ino,
+		dentry->d_name.name);
+
+	/* create a new inode */
 	vi = wtfs_new_inode(dir_vi, mode | S_IFREG);
 	if (IS_ERR(vi)) {
 		return PTR_ERR(vi);
 	}
+
+	/* add an entry to its parent directory */
 	wtfs_add_entry(dir_vi, vi->i_ino, dentry->d_name.name, dentry->d_name.len);
+
 	d_instantiate(dentry, vi);
 
 	return 0;
@@ -77,32 +94,56 @@ static int wtfs_create(struct inode * dir_vi, struct dentry * dentry,
 
 /********************* implementation of lookup *******************************/
 
+/*
+ * routine called when the VFS needs to look up an inode in a parent directory
+ *
+ * @dir_vi: the VFS inode of the parent directory
+ * @dentry: dentry of the file to look up
+ * @flags: ignored here
+ *
+ * return: NULL on success, error code otherwise
+ */
 static struct dentry * wtfs_lookup(struct inode * dir_vi, struct dentry * dentry,
 	unsigned int flags)
 {
 	struct inode * vi = NULL;
 	uint64_t inode_no;
 
+	wtfs_debug("lookup called, dir inode %lu, file '%s'\n", dir_vi->i_ino,
+		dentry->d_name.name);
+
+	/* find inode by name */
 	if ((inode_no = wtfs_find_inode(dir_vi, dentry)) != 0) {
 		vi = wtfs_iget(dir_vi->i_sb, inode_no);
 		if (IS_ERR(vi)) {
-			return ERR_PTR(vi);
+			return ERR_CAST(vi);
 		}
 	}
 
+	/* we should call d_add() no matter if we find the inode */
 	d_add(dentry, vi);
 	return NULL;
 }
 
 /********************* implementation of unlink *******************************/
 
+/*
+ * routine called to delete an inode
+ *
+ * @dir_vi: the VFS inode of the parent directory
+ * @dentry: dentry of the file to delete
+ *
+ * return: 0 on success, error code otherwise
+ */
 static int wtfs_unlink(struct inode * dir_vi, struct dentry * dentry)
 {
-	struct inode * vi = NULL;
 	uint64_t inode_no;
 	int ret = -ENOENT;
 
-	/* find in directory entries */
+	wtfs_debug("unlink called, file '%s' of inode %lu\n",
+		dentry->d_name.name, dentry->d_inode->i_ino);
+
+	/* find inode in directory entries */
 	if ((inode_no = wtfs_find_inode(dir_vi, dentry)) == 0) {
 		return ret;
 	}
@@ -118,18 +159,36 @@ static int wtfs_unlink(struct inode * dir_vi, struct dentry * dentry)
 
 /********************* implementation of mkdir ********************************/
 
+/*
+ * routine called to create a new directory
+ *
+ * @dir_vi: the VFS inode of the parent directory
+ * @dentry: dentry of the directory to create
+ * @mode: file mode
+ *
+ * return: 0 on success, error code otherwise
+ */
 static int wtfs_mkdir(struct inode * dir_vi, struct dentry * dentry,
 	umode_t mode)
 {
 	struct inode * vi = NULL;
 
+	wtfs_debug("mkdir called, parent inode %lu, dir to create '%s', mode 0%o\n",
+		dir_vi->i_ino, dentry->d_name.name, mode);
+
+	/* create a new inode */
 	vi = wtfs_new_inode(dir_vi, mode | S_IFDIR);
 	if (IS_ERR(vi)) {
 		return PTR_ERR(vi);
 	}
+
+	/* add an entry to its parent directory */
 	wtfs_add_entry(dir_vi, vi->i_ino, dentry->d_name.name, dentry->d_name.len);
+
+	/* add two entries of '.' and '..' to itself */
 	wtfs_add_entry(vi, vi->i_ino, ".", 1);
 	wtfs_add_entry(vi, dir_vi->i_ino, "..", 2);
+
 	d_instantiate(dentry, vi);
 
 	return 0;
@@ -137,11 +196,23 @@ static int wtfs_mkdir(struct inode * dir_vi, struct dentry * dentry,
 
 /********************* implementation of rmdir ********************************/
 
+/*
+ * routine called to delete an empty directory
+ *
+ * @dir_vi: the VFS inode of the parent directory
+ * @dentry: dentry of the directory to delete
+ *
+ * return: 0 on success, error code otherwise
+ */
 static int wtfs_rmdir(struct inode * dir_vi, struct dentry * dentry)
 {
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(dentry->d_inode);
 	int ret = -ENOTEMPTY;
 
+	wtfs_debug("rmdir called, dir '%s' of inode %lu with entry count %llu\n",
+		dentry->d_name.name, dentry->d_inode->i_ino, info->dir_entry_count);
+
+	/* call unlink() if it contains only 2 entries ('.' and '..') */
 	if (info->dir_entry_count == 2) {
 		return wtfs_unlink(dir_vi, dentry);
 	}
@@ -171,9 +242,15 @@ static int wtfs_setattr(struct dentry * dentry, struct iattr * attr)
 	struct inode * vi = dentry->d_inode;
 	int ret;
 
+	wtfs_debug("setattr called, file '%s' of inode %lu, mode 0%o\n",
+		dentry->d_name.name, dentry->d_inode->i_ino, attr->ia_mode);
+
+	/* check if the attributes can be set */
 	if ((ret = inode_change_ok(vi, attr)) < 0) {
 		return ret;
 	}
+
+	/* do set attributes */
 	setattr_copy(vi, attr);
 	mark_inode_dirty(vi);
 
@@ -196,7 +273,16 @@ static int wtfs_getattr(struct vfsmount * mnt, struct dentry * dentry,
 {
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(dentry->d_sb);
 
+	wtfs_debug("getattr called, file '%s' of inode %lu\n",
+		dentry->d_name.name, dentry->d_inode->i_ino);
+
+	/*
+	 * simply call generic_fillattr() because the VFS inode already contains
+	 * most attributes
+	 */
 	generic_fillattr(dentry->d_inode, stat);
+
+	/* the only thing we do is set block size */
 	stat->blksize = sbi->block_size;
 
 	return 0;
