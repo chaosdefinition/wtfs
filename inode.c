@@ -173,8 +173,8 @@ static int wtfs_mkdir(struct inode * dir_vi, struct dentry * dentry,
 {
 	struct inode * vi = NULL;
 
-	wtfs_debug("mkdir called, parent inode %lu, dir to create '%s', mode 0%o\n",
-		dir_vi->i_ino, dentry->d_name.name, mode);
+	wtfs_debug("mkdir called, parent inode %lu, dir to create '%s', "
+		"mode 0%o\n", dir_vi->i_ino, dentry->d_name.name, mode);
 
 	/* create a new inode */
 	vi = wtfs_new_inode(dir_vi, mode | S_IFDIR);
@@ -221,10 +221,58 @@ static int wtfs_rmdir(struct inode * dir_vi, struct dentry * dentry)
 
 /********************* implementation of rename *******************************/
 
+/*
+ * routine called to rename an inode
+ *
+ * @old_dir: the VFS inode of the old parent directory
+ * @old_dentry: the old dentry of the inode
+ * @new_dir: the VFS inode of the new parent directory
+ * @new_dentry: the new dentry of the inode
+ *
+ * return: 0 on success, error code otherwise
+ */
 static int wtfs_rename(struct inode * old_dir, struct dentry * old_dentry,
 	struct inode * new_dir, struct dentry * new_dentry)
 {
-	return -EPERM;
+	struct inode * old_vi = old_dentry->d_inode;
+	struct inode * new_vi = new_dentry->d_inode;
+	int ret = -EINVAL;
+
+	wtfs_debug("rename called to move '%s' in dir of inode %lu to "
+		"'%s' in dir of inode %lu\n", old_dentry->d_name.name, old_dir->i_ino,
+		new_dentry->d_name.name, new_dir->i_ino);
+
+	/* destination entry exists, remove it */
+	if (new_vi != NULL) {
+		switch (new_vi->i_mode & S_IFMT) {
+		case S_IFDIR:
+			if ((ret = wtfs_rmdir(new_dir, new_dentry)) < 0) {
+				return ret;
+			}
+			break;
+
+		case S_IFREG:
+			if ((ret = wtfs_unlink(new_dir, new_dentry)) < 0) {
+				return ret;
+			}
+			break;
+
+		default:
+			wtfs_error("special file type not supported\n");
+			return ret;
+		}
+	}
+
+	/* remove entry in old directory */
+	if ((ret = wtfs_delete_entry(old_dir, old_vi->i_ino)) < 0) {
+		return ret;
+	}
+
+	/* add a new entry in new directory */
+	wtfs_add_entry(new_dir, old_vi->i_ino, new_dentry->d_name.name,
+		new_dentry->d_name.len);
+
+	return 0;
 }
 
 /********************* implementation of setattr ******************************/
@@ -235,15 +283,15 @@ static int wtfs_rename(struct inode * old_dir, struct dentry * old_dentry,
  * @dentry: dentry of the file
  * @attr: attributes to set
  *
- * return: status
+ * return: 0 on success, error code otherwise
  */
 static int wtfs_setattr(struct dentry * dentry, struct iattr * attr)
 {
 	struct inode * vi = dentry->d_inode;
 	int ret;
 
-	wtfs_debug("setattr called, file '%s' of inode %lu, mode 0%o\n",
-		dentry->d_name.name, dentry->d_inode->i_ino, attr->ia_mode);
+	wtfs_debug("setattr called, file '%s' of inode %lu\n",
+		dentry->d_name.name, dentry->d_inode->i_ino);
 
 	/* check if the attributes can be set */
 	if ((ret = inode_change_ok(vi, attr)) < 0) {
@@ -252,6 +300,9 @@ static int wtfs_setattr(struct dentry * dentry, struct iattr * attr)
 
 	/* do set attributes */
 	setattr_copy(vi, attr);
+	if (attr->ia_valid & ATTR_SIZE) {
+		i_size_write(vi, attr->ia_size);
+	}
 	mark_inode_dirty(vi);
 
 	return 0;

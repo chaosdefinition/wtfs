@@ -209,7 +209,7 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 	wtfs_debug("write %ld bytes\n", ret);
 
 	*ppos += ret;
-	vi->i_size = *ppos; /* update file size */
+	i_size_write(vi, *ppos); /* update file size */
 	mark_inode_dirty(vi);
 	return ret;
 
