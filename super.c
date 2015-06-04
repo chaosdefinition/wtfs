@@ -136,7 +136,7 @@ static void wtfs_destroy_inode(struct inode * vi)
  * @vi: the VFS inode structure
  * @wbc: a control structure which tells the writeback code what to do
  *
- * return: status
+ * return: 0 on success, error code otherwise
  */
 static int wtfs_write_inode(struct inode * vi, struct writeback_control * wbc)
 {
@@ -297,7 +297,7 @@ static int wtfs_statfs(struct dentry * dentry, struct kstatfs * buf)
  * @data: arbitrary mount options
  * @silent: whether or not to be silent on error
  *
- * return: status
+ * return: 0 on success, error code otherwise
  */
 static int wtfs_fill_super(struct super_block * vsb, void * data, int silent)
 {
@@ -450,7 +450,7 @@ static void init_once(void * data)
 /*
  * create and initialize inode cache on module initialization
  *
- * return: status
+ * return: 0 on success, error code otherwise
  */
 static int __init create_inode_cache(void)
 {
@@ -475,7 +475,7 @@ static void destroy_inode_cache(void)
 /*
  * routine called when wtfs module should be loaded
  *
- * return: status
+ * return: 0 on success, error code otherwise
  */
 static int __init wtfs_init(void)
 {

@@ -92,14 +92,14 @@ struct inode * wtfs_iget(struct super_block * vsb, uint64_t inode_no)
 	info->first_block = wtfs64_to_cpu(inode->first_block);
 	switch (vi->i_mode & S_IFMT) {
 	case S_IFDIR:
-		vi->i_size = wtfs64_to_cpu(inode->block_count) * sbi->block_size;
+		i_size_write(vi, wtfs64_to_cpu(inode->block_count) * sbi->block_size);
 		vi->i_op = &wtfs_dir_inops;
 		vi->i_fop = &wtfs_dir_ops;
 		info->dir_entry_count = wtfs64_to_cpu(inode->dir_entry_count);
 		break;
 
 	case S_IFREG:
-		vi->i_size = wtfs64_to_cpu(inode->file_size);
+		i_size_write(vi, wtfs64_to_cpu(inode->file_size));
 		vi->i_op = &wtfs_file_inops;
 		vi->i_fop = &wtfs_file_ops;
 		break;
