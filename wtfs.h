@@ -34,15 +34,16 @@
  * version of wtfs
  * we may evolve several versions of it
  */
-#define WTFS_VERSION 0x0001 /* 0.1 */
+#define WTFS_VERSION 0x0001 /* 0.1.0 */
 
 /* version control */
 #define WTFS_VERSION_MAJOR(v) ((v) >> 8)
 #define WTFS_VERSION_MINOR(v) ((v) & 0xff)
-#define WTFS_GET_VERSION(major, minor) (((major) << 8) | (minor))
+#define WTFS_VERSION_PATCH(v) 0
+#define WTFS_GET_VERSION(major, minor, patch) (((major) << 8) | (minor))
 
 /*
- * version 0.1 physical disk layout:
+ * version 0.1.0 physical disk layout:
  *   +------------------+
  * 0 | boot loader      |
  *   +------------------+

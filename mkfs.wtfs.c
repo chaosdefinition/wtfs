@@ -20,6 +20,8 @@
  * along with wtfs.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,7 +42,8 @@ static int write_block_bitmap(int fd, unsigned long long inode_tables,
 	unsigned long long blk_bitmaps);
 static int write_inode_bitmap(int fd);
 static int write_root_dir(int fd);
-static void do_deep_format(int fd, unsigned long long blocks, int quiet);
+static void do_deep_format(int fd, unsigned long long blocks,
+	unsigned long long inode_tables, unsigned long long blk_bitmaps, int quiet);
 
 int main(int argc, char * const * argv)
 {
@@ -65,6 +68,7 @@ int main(int argc, char * const * argv)
 	const char * usage = "Usage: mkfs.wtfs [-fq] device\n\n"
 						 "  -f                    quick format\n"
 						 "  -q                    quiet mode\n\n";
+	struct stat stat;
 
 	/* parse arguments */
 	while ((opt = getopt(argc, argv, "fq")) != -1) {
@@ -96,9 +100,30 @@ int main(int argc, char * const * argv)
 		goto error;
 	}
 
-	/* get device size */
-	if (ioctl(fd, BLKGETSIZE64, &bytes) < 0) {
-		perror("mkfs.wtfs: unable to get the device size");
+	/* get device file stat */
+	if (fstat(fd, &stat) < 0) {
+		perror("mkfs.wtfs: unable to stat device file");
+		goto error;
+	}
+
+	switch (stat.st_mode & S_IFMT) {
+	/* block device */
+	case S_IFBLK:
+		/* get device size */
+		if (ioctl(fd, BLKGETSIZE64, &bytes) < 0) {
+			perror("mkfs.wtfs: unable to get the device size");
+			goto error;
+		}
+		break;
+
+	/* regular file */
+	case S_IFREG:
+		bytes = stat.st_size;
+		break;
+
+	default:
+		fprintf(stderr, "mkfs.wtfs: only block device and regular file "
+			"supported\n");
 		goto error;
 	}
 
@@ -106,6 +131,10 @@ int main(int argc, char * const * argv)
 	blocks = bytes / WTFS_BLOCK_SIZE;
 	inode_tables = WTFS_DATA_SIZE * 8 / WTFS_INODE_COUNT_PER_TABLE + 1;
 	blk_bitmaps = blocks / (WTFS_DATA_SIZE * 8);
+	if (blocks < inode_tables + blk_bitmaps + 4) {
+		fprintf(stderr, "mkfs.wtfs: volume of device too small\n");
+		goto error;
+	}
 	if (blocks % (WTFS_DATA_SIZE * 8) != 0) {
 		++blk_bitmaps;
 	}
@@ -140,7 +169,7 @@ int main(int argc, char * const * argv)
 			printf("quick format completed\n");
 		}
 	} else {
-		do_deep_format(fd, blocks, quiet);
+		do_deep_format(fd, blocks, inode_tables, blk_bitmaps, quiet);
 	}
 
 	close(fd);
@@ -384,7 +413,8 @@ static int write_root_dir(int fd)
 	}
 }
 
-static void do_deep_format(int fd, unsigned long long blocks, int quiet)
+static void do_deep_format(int fd, unsigned long long blocks,
+	unsigned long long inode_tables, unsigned long long blk_bitmaps, int quiet)
 {
 	unsigned long long i, percent, prev = 0;
 	struct wtfs_data_block block;
@@ -395,7 +425,7 @@ static void do_deep_format(int fd, unsigned long long blocks, int quiet)
 		printf("\rformat complete 0%%");
 		fflush(stdout);
 	}
-	lseek(fd, (WTFS_DB_FIRST + 1) * WTFS_BLOCK_SIZE, SEEK_SET);
+	lseek(fd, (WTFS_DB_FIRST + inode_tables + blk_bitmaps - 1) * WTFS_BLOCK_SIZE, SEEK_SET);
 	for (i = 0; i < blocks; ++i) {
 		if (write(fd, &block, sizeof(block)) != sizeof(block)) {
 			break;

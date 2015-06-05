@@ -384,14 +384,23 @@ error:
  */
 uint64_t wtfs_alloc_block(struct super_block * vsb)
 {
+	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	uint64_t blk_no;
 
-	blk_no = __wtfs_alloc_obj(vsb, WTFS_SB_INFO(vsb)->block_bitmap_first);
+	/*
+	 * if total block count is smaller than that one block bitmap can state,
+	 * we have to do this check explicitly
+	 */
+	if (sbi->free_block_count == 0) {
+		return 0;
+	}
+
+	blk_no = __wtfs_alloc_obj(vsb, sbi->block_bitmap_first);
 	if (blk_no != 0) {
-		--WTFS_SB_INFO(vsb)->free_block_count;
+		--sbi->free_block_count;
 		wtfs_sync_super(vsb);
 
-		wtfs_debug("free blocks: %llu\n", WTFS_SB_INFO(vsb)->free_block_count);
+		wtfs_debug("free blocks: %llu\n", sbi->free_block_count);
 	}
 	return blk_no;
 }
