@@ -161,16 +161,39 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 		}
 		block = (struct wtfs_data_block *)bh->b_data;
 		next = wtfs64_to_cpu(block->next);
+		/* do not release the last block */
+		if (next == 0) {
+			break;
+		}
 		brelse(bh);
 	}
 
 	/* start write */
 	ret = 0;
 	while (length > 0) {
-		if ((bh = sb_bread(vsb, next)) == NULL) {
-			wtfs_error("unable to read the block %llu\n", next);
-			break;
+		if (next != 0) {
+			brelse(bh);
+			if ((bh = sb_bread(vsb, next)) == NULL) {
+				wtfs_error("unable to read the block %llu\n", next);
+				break;
+			}
+		} else {
+			/* alloc a new data block */
+			if ((blk_no = wtfs_alloc_block(vsb)) == 0) {
+				break;
+			}
+			bh2 = wtfs_init_block(vsb, bh, blk_no);
+			if (IS_ERR(bh2)) {
+				wtfs_free_block(vsb, blk_no);
+				break;
+			}
+			brelse(bh);
+			bh = bh2;
+			next = blk_no;
+			++vi->i_blocks;
+			mark_inode_dirty(vi);
 		}
+
 		block = (struct wtfs_data_block *)bh->b_data;
 
 		/* max bytes we can write to this block */
@@ -184,26 +207,10 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 		offset = 0;
 
 		next = wtfs64_to_cpu(block->next);
-		if (next != 0 || length == 0) {
-			brelse(bh);
-		} else {
-			/* alloc a new data block */
-			if ((blk_no = wtfs_alloc_block(vsb)) == 0) {
-				brelse(bh);
-				break;
-			}
-			bh2 = wtfs_init_block(vsb, bh, blk_no);
-			if (IS_ERR(bh2)) {
-				wtfs_free_block(vsb, blk_no);
-				brelse(bh);
-				break;
-			}
-			brelse(bh);
-			brelse(bh2);
-			next = blk_no;
-			++vi->i_blocks;
-			mark_inode_dirty(vi);
-		}
+	}
+	/* release the last buffer here */
+	if (bh != NULL) {
+		brelse(bh);
 	}
 
 	wtfs_debug("write %ld bytes\n", ret);

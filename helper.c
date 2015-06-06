@@ -349,6 +349,7 @@ struct buffer_head * wtfs_init_block(struct super_block * vsb,
 	struct buffer_head * bh = NULL;
 	int ret = -EINVAL;
 
+	wtfs_debug("read block %llu\n", blk_no);
 	if ((bh = sb_bread(vsb, blk_no)) == NULL) {
 		wtfs_error("unable to read the block %llu\n", blk_no);
 		goto error;
@@ -470,14 +471,15 @@ error:
  */
 uint64_t wtfs_alloc_free_inode(struct super_block * vsb)
 {
+	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	uint64_t inode_no;
 
-	inode_no = __wtfs_alloc_obj(vsb, WTFS_SB_INFO(vsb)->inode_bitmap_first);
+	inode_no = __wtfs_alloc_obj(vsb, sbi->inode_bitmap_first);
 	if (inode_no != 0) {
-		++WTFS_SB_INFO(vsb)->inode_count;
+		++sbi->inode_count;
 		wtfs_sync_super(vsb);
 
-		wtfs_debug("inodes: %llu\n", WTFS_SB_INFO(vsb)->inode_count);
+		wtfs_debug("inodes: %llu\n", sbi->inode_count);
 	}
 	return inode_no;
 }
@@ -578,12 +580,15 @@ error:
  */
 void wtfs_free_block(struct super_block * vsb, uint64_t blk_no)
 {
+	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 
-	__wtfs_free_obj(vsb, WTFS_SB_INFO(vsb)->block_bitmap_first, blk_no);
-	++WTFS_SB_INFO(vsb)->free_block_count; /* increase free block counter */
-	wtfs_sync_super(vsb);
+	if (sbi->free_block_count < sbi->block_count) {
+		__wtfs_free_obj(vsb, sbi->block_bitmap_first, blk_no);
+		++sbi->free_block_count; /* increase free block counter */
+		wtfs_sync_super(vsb);
 
-	wtfs_debug("free blocks: %llu\n", WTFS_SB_INFO(vsb)->free_block_count);
+		wtfs_debug("free blocks: %llu\n", sbi->free_block_count);
+	}
 }
 
 /*
@@ -613,11 +618,15 @@ static void __wtfs_free_obj(struct super_block * vsb, uint64_t entry,
  */
 void wtfs_free_inode(struct super_block * vsb, uint64_t inode_no)
 {
-	__wtfs_free_obj(vsb, WTFS_SB_INFO(vsb)->inode_bitmap_first, inode_no);
-	--WTFS_SB_INFO(vsb)->inode_count; /* decrease inode counter */
-	wtfs_sync_super(vsb);
+	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 
-	wtfs_debug("inodes: %llu\n", WTFS_SB_INFO(vsb)->inode_count);
+	if (inode_no != 0 && inode_no != WTFS_ROOT_INO) {
+		__wtfs_free_obj(vsb, sbi->inode_bitmap_first, inode_no);
+		--sbi->inode_count; /* decrease inode counter */
+		wtfs_sync_super(vsb);
+
+		wtfs_debug("inodes: %llu\n", sbi->inode_count);
+	}
 }
 
 /********************* implementation of wtfs_sync_super **********************/
@@ -834,7 +843,7 @@ int wtfs_delete_entry(struct inode * dir_vi, uint64_t inode_no)
 	struct wtfs_data_block * block = NULL;
 	struct buffer_head * bh = NULL;
 	uint64_t i, next = dir_info->first_block;
-	int ret = -ENOENT;
+	int ret = -EINVAL;
 
 	/* find the specified entry in existing entries */
 	while (next != 0) {
@@ -859,6 +868,9 @@ int wtfs_delete_entry(struct inode * dir_vi, uint64_t inode_no)
 		next = wtfs64_to_cpu(block->next);
 		brelse(bh);
 	}
+
+	/* not found */
+	return -ENOENT;
 
 error:
 	if (bh != NULL) {
@@ -921,6 +933,8 @@ out:
 		next = i;
 		brelse(bh);
 	}
+
+	return;
 
 error:
 	if (bh != NULL) {
