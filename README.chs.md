@@ -1,4 +1,6 @@
 # wtfs
+[![wtfs version](https://badge.fury.io/gh/chaosdefinition%2Fwtfs.svg)](http://badge.fury.io/gh/chaosdefinition%2Fwtfs)
+
 适用于 Linux 的什么鬼文件系统
 
 在 [GPLv3](https://github.com/chaosdefinition/wtfs/blob/master/LICENSE.txt) 的许可下发布

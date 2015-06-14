@@ -101,11 +101,11 @@
 #define WTFS_DATA_SIZE (WTFS_BLOCK_SIZE - sizeof(wtfs64_t))
 
 /* reserved block indices */
-#define WTFS_RB_BOOT            0   /* boot loader block */
-#define WTFS_RB_SUPER           1   /* super block */
-#define WTFS_RB_INODE_TABLE     2   /* first inode table */
-#define WTFS_RB_BLOCK_BITMAP    3   /* first block bitmap */
-#define WTFS_RB_INODE_BITMAP    4   /* first inode bitmap */
+#define WTFS_RB_BOOT            0 /* boot loader block */
+#define WTFS_RB_SUPER           1 /* super block */
+#define WTFS_RB_INODE_TABLE     2 /* first inode table */
+#define WTFS_RB_BLOCK_BITMAP    3 /* first block bitmap */
+#define WTFS_RB_INODE_BITMAP    4 /* first inode bitmap */
 
 /* first data block index (for root directory) */
 #define WTFS_DB_FIRST           5

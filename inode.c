@@ -29,10 +29,11 @@
 /* declaration of inode operations */
 static int wtfs_create(struct inode * dir_vi, struct dentry * dentry,
 	umode_t mode, bool excl);
-static struct dentry * wtfs_lookup(struct inode * dir_vi, struct dentry * dentry,
-	unsigned int flags);
+static struct dentry * wtfs_lookup(struct inode * dir_vi,
+	struct dentry * dentry, unsigned int flags);
 static int wtfs_unlink(struct inode * dir_vi, struct dentry * dentry);
-static int wtfs_mkdir(struct inode * dir_vi, struct dentry * dentry, umode_t mode);
+static int wtfs_mkdir(struct inode * dir_vi, struct dentry * dentry,
+	umode_t mode);
 static int wtfs_rmdir(struct inode * dir_vi, struct dentry * dentry);
 static int wtfs_rename(struct inode * old_dir, struct dentry * old_dentry,
 	struct inode * new_dir, struct dentry * new_dentry);
@@ -103,8 +104,8 @@ static int wtfs_create(struct inode * dir_vi, struct dentry * dentry,
  *
  * return: NULL on success, error code otherwise
  */
-static struct dentry * wtfs_lookup(struct inode * dir_vi, struct dentry * dentry,
-	unsigned int flags)
+static struct dentry * wtfs_lookup(struct inode * dir_vi,
+	struct dentry * dentry, unsigned int flags)
 {
 	struct inode * vi = NULL;
 	uint64_t inode_no;

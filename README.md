@@ -1,4 +1,6 @@
 # wtfs
+[![wtfs version](https://badge.fury.io/gh/chaosdefinition%2Fwtfs.svg)](http://badge.fury.io/gh/chaosdefinition%2Fwtfs)
+
 What the fxck filesystem for Linux
 
 Licensed under [GPLv3](https://github.com/chaosdefinition/wtfs/blob/master/LICENSE.txt)

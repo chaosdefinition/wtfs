@@ -35,15 +35,16 @@
 #include "wtfs.h"
 
 static int write_boot_block(int fd);
-static int write_super_block(int fd, unsigned long long blocks,
-	unsigned long long inode_tables, unsigned long long blk_bitmaps);
-static int write_inode_table(int fd, unsigned long long inode_tables);
-static int write_block_bitmap(int fd, unsigned long long inode_tables,
-	unsigned long long blk_bitmaps);
-static int write_inode_bitmap(int fd);
+static int write_super_block(int fd, uint64_t blocks, uint64_t inode_tables,
+	uint64_t blk_bitmaps, uint64_t inode_bitmaps);
+static int write_inode_table(int fd, uint64_t inode_tables);
+static int write_block_bitmap(int fd, uint64_t inode_tables,
+	uint64_t blk_bitmaps);
+static int write_inode_bitmap(int fd, uint64_t inode_tables,
+	uint64_t blk_bitmaps, uint64_t inode_bitmaps);
 static int write_root_dir(int fd);
-static void do_deep_format(int fd, unsigned long long blocks,
-	unsigned long long inode_tables, unsigned long long blk_bitmaps, int quiet);
+static void do_deep_format(int fd, uint64_t blocks, uint64_t inode_tables,
+	uint64_t blk_bitmaps, uint64_t inode_bitmaps, int quiet);
 
 int main(int argc, char * const * argv)
 {
@@ -57,13 +58,16 @@ int main(int argc, char * const * argv)
 	int fd = -1;
 
 	/* bytes and blocks of the device */
-	unsigned long long bytes, blocks;
+	uint64_t bytes, blocks;
 
 	/* inode tables */
-	unsigned long long inode_tables;
+	uint64_t inode_tables;
 
 	/* block bitmaps */
-	unsigned long long blk_bitmaps;
+	uint64_t blk_bitmaps;
+
+	/* inode bitmaps */
+	uint64_t inode_bitmaps;
 
 	const char * usage = "Usage: mkfs.wtfs [-fq] device\n\n"
 						 "  -f                    quick format\n"
@@ -131,6 +135,7 @@ int main(int argc, char * const * argv)
 	blocks = bytes / WTFS_BLOCK_SIZE;
 	inode_tables = WTFS_DATA_SIZE * 8 / WTFS_INODE_COUNT_PER_TABLE + 1;
 	blk_bitmaps = blocks / (WTFS_DATA_SIZE * 8);
+	inode_bitmaps = 1;
 	if (blocks < inode_tables + blk_bitmaps + 4) {
 		fprintf(stderr, "mkfs.wtfs: volume of device too small\n");
 		goto error;
@@ -144,7 +149,8 @@ int main(int argc, char * const * argv)
 		fprintf(stderr, "mkfs.wtfs: write the bootloader block failed\n");
 		goto error;
 	}
-	if (write_super_block(fd, blocks, inode_tables, blk_bitmaps) < 0) {
+	if (write_super_block(fd, blocks, inode_tables, blk_bitmaps, inode_bitmaps)
+		< 0) {
 		fprintf(stderr, "mkfs.wtfs: write the super block failed\n");
 		goto error;
 	}
@@ -156,7 +162,7 @@ int main(int argc, char * const * argv)
 		fprintf(stderr, "mkfs.wtfs: write the block bitmap failed\n");
 		goto error;
 	}
-	if (write_inode_bitmap(fd) < 0) {
+	if (write_inode_bitmap(fd, inode_tables, blk_bitmaps, inode_bitmaps) < 0) {
 		fprintf(stderr, "mkfs.wtfs: write the inode bitmap failed\n");
 		goto error;
 	}
@@ -169,7 +175,8 @@ int main(int argc, char * const * argv)
 			printf("quick format completed\n");
 		}
 	} else {
-		do_deep_format(fd, blocks, inode_tables, blk_bitmaps, quiet);
+		do_deep_format(fd, blocks, inode_tables, blk_bitmaps, inode_bitmaps,
+			quiet);
 	}
 
 	close(fd);
@@ -195,8 +202,8 @@ static int write_boot_block(int fd)
 	}
 }
 
-static int write_super_block(int fd, unsigned long long blocks,
-	unsigned long long inode_tables, unsigned long long blk_bitmaps)
+static int write_super_block(int fd, uint64_t blocks, uint64_t inode_tables,
+	uint64_t blk_bitmaps, uint64_t inode_bitmaps)
 {
 	struct wtfs_super_block sb = {
 		.version = cpu_to_wtfs64(WTFS_VERSION),
@@ -208,9 +215,9 @@ static int write_super_block(int fd, unsigned long long blocks,
 		.block_bitmap_first = cpu_to_wtfs64(WTFS_RB_BLOCK_BITMAP),
 		.block_bitmap_count = cpu_to_wtfs64(blk_bitmaps),
 		.inode_bitmap_first = cpu_to_wtfs64(WTFS_RB_INODE_BITMAP),
-		.inode_bitmap_count = cpu_to_wtfs64(1),
+		.inode_bitmap_count = cpu_to_wtfs64(inode_bitmaps),
 		.inode_count = cpu_to_wtfs64(1),
-		.free_block_count = cpu_to_wtfs64(blocks - inode_tables - blk_bitmaps - 4)
+		.free_block_count = cpu_to_wtfs64(blocks - inode_tables - blk_bitmaps - inode_bitmaps - 3)
 	};
 
 	lseek(fd, WTFS_RB_SUPER * WTFS_BLOCK_SIZE, SEEK_SET);
@@ -227,7 +234,7 @@ static int write_super_block(int fd, unsigned long long blocks,
  * there are at most 4088 * 8 inodes, which requires only 520 inode tables,
  * so we pre-build the whole inode table for the device
  */
-static int write_inode_table(int fd, unsigned long long inode_tables)
+static int write_inode_table(int fd, uint64_t inode_tables)
 {
 	/* buffer to write */
 	struct wtfs_inode_table inode_table;
@@ -247,13 +254,12 @@ static int write_inode_table(int fd, unsigned long long inode_tables)
 	};
 
 	/* block number index array */
-	unsigned long long * index = NULL;
-	unsigned long long i;
+	uint64_t * index = NULL;
+	uint64_t i;
 	int ret = -EINVAL;
 
 	/* construct index */
-	index = (unsigned long long *)calloc(inode_tables + 1,
-		sizeof(unsigned long long));
+	index = (uint64_t *)calloc(inode_tables + 1, sizeof(uint64_t));
 	if (index == NULL) {
 		ret = -ENOMEM;
 		goto error;
@@ -298,30 +304,29 @@ error:
  * since the device size is fixed,
  * we pre-build the whole block bitmap for the device
  */
-static int write_block_bitmap(int fd, unsigned long long inode_tables,
-	unsigned long long blk_bitmaps)
+static int write_block_bitmap(int fd, uint64_t inode_tables,
+	uint64_t blk_bitmaps)
 {
 	/* full bytes fill 0xff */
-	unsigned long long full_bytes = (blk_bitmaps + inode_tables + 4) / 8;
+	uint64_t full_bytes = (blk_bitmaps + inode_tables + 4) / 8;
 
 	/* half byte fill (1 << half_byte) - 1 */
-	unsigned long long half_byte = (blk_bitmaps + inode_tables + 4) % 8;
+	uint64_t half_byte = (blk_bitmaps + inode_tables + 4) % 8;
 
 	/* last full bitmap */
-	unsigned long long full = full_bytes / WTFS_DATA_SIZE;
+	uint64_t full = full_bytes / WTFS_DATA_SIZE;
 
 	/* full bytes in half-full bitmap */
-	unsigned long long half_full = full_bytes % WTFS_DATA_SIZE;
+	uint64_t half_full = full_bytes % WTFS_DATA_SIZE;
 
 	/* block number index array */
-	unsigned long long * index;
-	unsigned long long i, j;
+	uint64_t * index;
+	uint64_t i, j;
 	struct wtfs_data_block blk;
 	int ret = -EINVAL;
 
 	/* construct index */
-	index = (unsigned long long *)calloc(blk_bitmaps + 1,
-		sizeof(unsigned long long));
+	index = (uint64_t *)calloc(blk_bitmaps + 1, sizeof(uint64_t));
 	if (index == NULL) {
 		ret = -ENOMEM;
 		goto error;
@@ -377,7 +382,8 @@ error:
 	return ret;
 }
 
-static int write_inode_bitmap(int fd)
+static int write_inode_bitmap(int fd, uint64_t inode_tables,
+	uint64_t blk_bitmaps, uint64_t inode_bitmaps)
 {
 	struct wtfs_data_block inode_bitmap = {
 		.data = { 0x03 }
@@ -413,19 +419,20 @@ static int write_root_dir(int fd)
 	}
 }
 
-static void do_deep_format(int fd, unsigned long long blocks,
-	unsigned long long inode_tables, unsigned long long blk_bitmaps, int quiet)
+static void do_deep_format(int fd, uint64_t blocks, uint64_t inode_tables,
+	uint64_t blk_bitmaps, uint64_t inode_bitmaps, int quiet)
 {
-	unsigned long long i, percent, prev = 0;
+	uint64_t start = WTFS_DB_FIRST + inode_tables + blk_bitmaps + inode_bitmaps - 2;
+	uint64_t i, percent, prev = 0;
 	struct wtfs_data_block block;
 
 	memset(&block, 0, sizeof(block));
 	if (!quiet) {
-		printf("total %llu blocks to format\n", blocks -= WTFS_DB_FIRST + 1);
+		printf("total %lu blocks to format\n", (blocks -= start));
 		printf("\rformat complete 0%%");
 		fflush(stdout);
 	}
-	lseek(fd, (WTFS_DB_FIRST + inode_tables + blk_bitmaps - 1) * WTFS_BLOCK_SIZE, SEEK_SET);
+	lseek(fd, start * WTFS_BLOCK_SIZE, SEEK_SET);
 	for (i = 0; i < blocks; ++i) {
 		if (write(fd, &block, sizeof(block)) != sizeof(block)) {
 			break;
@@ -433,7 +440,7 @@ static void do_deep_format(int fd, unsigned long long blocks,
 		if (!quiet) {
 			percent = (i + 1) * 100 / blocks;
 			if (percent > prev) {
-				printf("\rformat complete %llu%%", percent);
+				printf("\rformat complete %lu%%", percent);
 				fflush(stdout);
 				prev = percent;
 			}

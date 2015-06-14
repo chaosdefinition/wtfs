@@ -22,6 +22,7 @@
 
 #include <unistd.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <fcntl.h>
 #include <endian.h>
@@ -104,8 +105,7 @@ static int read_super_block(int fd)
 	}
 
 	if (wtfs64_to_cpu(sb.magic) != WTFS_MAGIC) {
-		printf("magic number mismatch: 0x%llx\n", wtfs64_to_cpu(sb.magic));
-		return 0;
+		return -EPERM;
 	}
 
 	printf("wtfs on this device\n");
@@ -128,7 +128,7 @@ static int read_super_block(int fd)
 static int read_inode_table(int fd)
 {
 	struct wtfs_data_block bitmap;
-	unsigned long long next = WTFS_RB_INODE_TABLE;
+	uint64_t next = WTFS_RB_INODE_TABLE;
 	int i = 0;
 
 	while (next != 0) {
@@ -138,9 +138,9 @@ static int read_inode_table(int fd)
 		}
 
 		if (next == WTFS_RB_INODE_TABLE) {
-			printf("inode table\n%llu", next);
+			printf("inode table\n%lu", next);
 		} else {
-			printf("->%llu", next);
+			printf("->%lu", next);
 		}
 		next = wtfs64_to_cpu(bitmap.next);
 		++i;
@@ -152,7 +152,7 @@ static int read_inode_table(int fd)
 static int read_block_bitmap(int fd)
 {
 	struct wtfs_data_block bitmap;
-	unsigned long long next = WTFS_RB_BLOCK_BITMAP;
+	uint64_t next = WTFS_RB_BLOCK_BITMAP;
 	int i = 0;
 
 	while (next != 0) {
@@ -162,9 +162,9 @@ static int read_block_bitmap(int fd)
 		}
 
 		if (next == WTFS_RB_BLOCK_BITMAP) {
-			printf("block bitmap\n%llu", next);
+			printf("block bitmap\n%lu", next);
 		} else {
-			printf("->%llu", next);
+			printf("->%lu", next);
 		}
 		next = wtfs64_to_cpu(bitmap.next);
 		++i;
@@ -185,7 +185,7 @@ static int read_inode_bitmap(int fd)
 
 	printf("inode bitmap\n");
 	for (i = 0; i < WTFS_DATA_SIZE; ++i) {
-		printf("%x", bitmap.data[i]);
+		printf("%02x", bitmap.data[i]);
 	}
 	printf("\n\n");
 
@@ -196,7 +196,7 @@ static int read_root_dir(int fd)
 {
 	struct wtfs_data_block root_dir;
 	int i;
-	unsigned long long next = WTFS_DB_FIRST;
+	uint64_t next = WTFS_DB_FIRST;
 
 	while (next != 0) {
 		lseek(fd, next * WTFS_BLOCK_SIZE, SEEK_SET);
@@ -210,7 +210,8 @@ static int read_root_dir(int fd)
 
 		for (i = 0; i < WTFS_DENTRY_COUNT_PER_BLOCK; ++i) {
 			if (root_dir.entries[i].inode_no != 0) {
-				printf("%llu  %s\n", root_dir.entries[i].inode_no,
+				printf("%llu  %s\n",
+					wtfs64_to_cpu(root_dir.entries[i].inode_no),
 					root_dir.entries[i].filename);
 			}
 		}
