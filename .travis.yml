@@ -8,9 +8,9 @@ before_install:
   - sudo apt-get install -y "linux-headers-$KERNEL_VERSION"
 script:
   # let's do something simple first
-  - make -C /lib/modules/$KERNEL_VERSION/build M=$(PWD) modules
+  - make -C /lib/modules/$KERNEL_VERSION/build M=`pwd` modules
   - make mkfs.wtfs
   - make statfs.wtfs
 after_script:
-  - make -C /lib/modules/$KERNEL_VERSION/build M=$(PWD) clean
+  - make -C /lib/modules/$KERNEL_VERSION/build M=`pwd` clean
   - rm -rf mkfs.wtfs statfs.wtfs
