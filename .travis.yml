@@ -3,9 +3,14 @@ compiler:
   - gcc
   - clang
 before_install:
+  - set KERNEL_VERSION="3.13.0-55-generic"
   - sudo apt-get update -qq
-  - sudo apt-get install -y linux-headers-`uname -r`
+  - sudo apt-get install -y "linux-headers-$KERNEL_VERSION"
 script:
   # let's do something simple first
-  - make
-  - make clean
+  - make -C /lib/modules/$KERNEL_VERSION/build M=$(PWD) modules
+  - make mkfs.wtfs
+  - make statfs.wtfs
+after_script:
+  - make -C /lib/modules/$KERNEL_VERSION/build M=$(PWD) clean
+  - rm -rf mkfs.wtfs statfs.wtfs
