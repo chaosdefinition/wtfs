@@ -1,0 +1,8 @@
+language: c
+compiler:
+	- gcc
+	- clang
+script:
+	# let's do something simple first
+	- make
+	- make clean

@@ -24,6 +24,7 @@
 #include <linux/vfs.h>
 #include <linux/buffer_head.h>
 #include <linux/err.h>
+#include <linux/slab.h>
 
 #include "wtfs.h"
 
@@ -33,11 +34,22 @@ static ssize_t wtfs_read(struct file * file, char __user * buf,
 static ssize_t wtfs_write(struct file * file, const char __user * buf,
 	size_t length, loff_t * ppos);
 static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence);
+static int wtfs_open(struct inode * vi, struct file * file);
+static int wtfs_release(struct inode * vi, struct file * file);
 
 const struct file_operations wtfs_file_ops = {
 	.read = wtfs_read,
 	.write = wtfs_write,
-	.llseek = wtfs_llseek
+	.llseek = wtfs_llseek,
+	.open = wtfs_open,
+	.release = wtfs_release
+};
+
+/* structure to store I/O position */
+static struct wtfs_file_pos
+{
+	uint64_t blk_no;
+	uint64_t pos;
 };
 
 /********************* implementation of read *********************************/
@@ -58,18 +70,14 @@ static ssize_t wtfs_read(struct file * file, char __user * buf,
 	struct inode * vi = file->f_inode;
 	struct super_block * vsb = vi->i_sb;
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
+	struct wtfs_file_pos * file_pos = file->private_data;
 	struct wtfs_data_block * block = NULL;
 	struct buffer_head * bh = NULL;
 	uint64_t i, count, offset, remain, next;
 	ssize_t ret = -EINVAL, nbytes;
 
-	/* use static variables to speed up reading */
-	static uint64_t last_ino, last_blk_no, last_pos;
-
 	wtfs_debug("read called, inode %lu, length %lu, pos %llu\n",
 		vi->i_ino, length, *ppos);
-	wtfs_debug("last_ino %llu, last_blk_no %llu, last_pos %llu\n",
-		last_ino, last_blk_no, last_pos);
 
 	/* check if we reach the EOF */
 	if (*ppos >= vi->i_size) {
@@ -80,12 +88,12 @@ static ssize_t wtfs_read(struct file * file, char __user * buf,
 	count = *ppos / WTFS_DATA_SIZE;
 	offset = *ppos % WTFS_DATA_SIZE;
 
-	if (last_ino == vi->i_ino && last_pos == *ppos) {
+	if (file_pos->pos != 0 && file_pos->pos == *ppos) {
 		/*
 		 * this is the subsequent call of previous read
 		 * use the last block number directly
 		 */
-		next = last_blk_no;
+		next = file_pos->blk_no;
 	} else {
 		/* skip the first count-th blocks from beginning */
 		next = info->first_block;
@@ -116,9 +124,9 @@ static ssize_t wtfs_read(struct file * file, char __user * buf,
 
 		/* record correct block number */
 		if (nbytes == WTFS_DATA_SIZE - offset) {
-			last_blk_no = wtfs64_to_cpu(block->next);
+			file_pos->blk_no = wtfs64_to_cpu(block->next);
 		} else {
-			last_blk_no = next;
+			file_pos->blk_no = next;
 		}
 
 		/* update bytes read */
@@ -133,11 +141,11 @@ static ssize_t wtfs_read(struct file * file, char __user * buf,
 
 	wtfs_debug("read %ld bytes\n", ret);
 
-	*ppos += ret; /* update position pointer */
+	/* update position pointer */
+	*ppos += ret;
 
-	/* record inode number and the position read */
-	last_ino = vi->i_ino;
-	last_pos = *ppos;
+	/* record the position read */
+	file_pos->pos = *ppos;
 
 	return ret;
 
@@ -242,9 +250,13 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 
 	wtfs_debug("write %ld bytes\n", ret);
 
-	*ppos += ret; /* update position pointer */
-	i_size_write(vi, *ppos); /* update file size */
+	/* update position pointer */
+	*ppos += ret;
+
+	/* update file size */
+	i_size_write(vi, *ppos);
 	mark_inode_dirty(vi);
+
 	return ret;
 
 error:
@@ -269,4 +281,60 @@ error:
 static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence)
 {
 	return -EINVAL;
+}
+
+/********************* implementation of open *********************************/
+
+/*
+ * routine called by the VFS when an inode should be opened
+ *
+ * @vi: the VFS inode to open
+ * @file: the VFS file structure
+ *
+ * return: 0 on success, error code otherwise
+ */
+static int wtfs_open(struct inode * vi, struct file * file)
+{
+	struct wtfs_file_pos * data = NULL;
+	int ret = -EINVAL;
+
+	wtfs_debug("open called, inode %lu\n", vi->i_ino);
+
+	if (file->private_data == NULL) {
+		/* alloc a new struct wtfs_file_pos */
+		data = (struct wtfs_file_pos *)kzalloc(sizeof(struct wtfs_file_pos),
+			GFP_KERNEL);
+		if (data == NULL) {
+			ret = -ENOMEM;
+			goto error;
+		}
+
+		/* set private_data */
+		file->private_data = data;
+		return 0;
+	}
+
+error:
+	return ret;
+}
+
+/********************* implementation of release ******************************/
+
+/*
+ * routine called when the last reference to an open file is closed
+ *
+ * @vi: the VFS inode to open
+ * @file: the VFS file structure
+ *
+ * return: 0
+ */
+static int wtfs_release(struct inode * vi, struct file * file)
+{
+	wtfs_debug("release called, inode %lu\n", vi->i_ino);
+
+	if (file->private_data != NULL) {
+		/* release the memory we alloc at the open call */
+		kfree(file->private_data);
+	}
+	return 0;
 }
