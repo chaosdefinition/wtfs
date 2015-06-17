@@ -1,5 +1,6 @@
 # wtfs
 [![wtfs version](https://badge.fury.io/gh/chaosdefinition%2Fwtfs.svg)](http://badge.fury.io/gh/chaosdefinition%2Fwtfs)
+[![Build status](https://travis-ci.org/chaosdefinition/wtfs.svg)](https://travis-ci.org/chaosdefinition/wtfs)
 
 What the fxck filesystem for Linux
 
