@@ -55,7 +55,7 @@ $ sudo rmmod wtfs
 ```
 
 ## Physical disk layout of wtfs
-Version 0.1.0
+Version 0.2.0
 
 Block 0 | Block 1 | Block 2 | Block 3 | Block 4 | Block 5... |
 ------- | ------- | ------- | ------- | ------- | ---------- |

@@ -98,6 +98,7 @@ static int read_boot_block(int fd)
 static int read_super_block(int fd)
 {
 	struct wtfs_super_block sb;
+	uint64_t version;
 
 	lseek(fd, WTFS_RB_SUPER * WTFS_BLOCK_SIZE, SEEK_SET);
 	if (read(fd, &sb, sizeof(sb)) != sizeof(sb)) {
@@ -108,8 +109,10 @@ static int read_super_block(int fd)
 		return -EPERM;
 	}
 
+	version = wtfs64_to_cpu(sb.version);
 	printf("wtfs on this device\n");
-	printf("version:                %llu\n", wtfs64_to_cpu(sb.version));
+	printf("version:                %lu.%lu.%lu\n", WTFS_VERSION_MAJOR(version),
+		WTFS_VERSION_MINOR(version), WTFS_VERSION_PATCH(version));
 	printf("magic number:           0x%llx\n", wtfs64_to_cpu(sb.magic));
 	printf("block size:             %llu\n", wtfs64_to_cpu(sb.block_size));
 	printf("total blocks:           %llu\n", wtfs64_to_cpu(sb.block_count));
