@@ -5,7 +5,7 @@ compiler:
 before_install:
   - KERNEL_VERSION="3.13.0-55-generic"
   - sudo apt-get update -qq
-  - sudo apt-get install -y "linux-headers-$KERNEL_VERSION"
+  - sudo apt-get install -y -qq "linux-headers-$KERNEL_VERSION"
 script:
   # let's do something simple first
   - make -C /lib/modules/$KERNEL_VERSION/build M=`pwd` modules

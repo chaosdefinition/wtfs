@@ -9,6 +9,15 @@ Licensed under [GPLv3](https://github.com/chaosdefinition/wtfs/blob/master/LICEN
 中文说明见 [README.chs.md](https://github.com/chaosdefinition/wtfs/blob/master/README.chs.md)
 
 ## How to use it
+Before compiling, you need to install build essentials and Linux kernel header
+ files of proper version to enable kernel module building.
+```Shell
+# for Debian derivatives
+$ sudo apt-get install build-essential linux-headers-`uname -r`
+# for Redhat derivatives
+$ sudo yum groupinstall "Development Tools" kernel-devel kernel-headers
+```
+
 First compile the whole project and load the module into kernel.
 ```Shell
 $ cd wtfs && make
@@ -20,19 +29,21 @@ Then create a directory (here we name it `~/wtfs-test`) as the mount point.
 $ mkdir ~/wtfs-test
 ```
 
-Create a 4GB (any size, but not too small, will fit) regular file (here we name
- it `wtfs.data`) as the device, do format on it and mount it on the directory we
- created.
+Use a block device (here we name it `/dev/sda`), do format on it and mount it
+ on the directory we just created.
+```Shell
+$ sudo ./mkfs.wtfs -f /dev/sda
+$ sudo mount -t wtfs /dev/sda ~/wtfs-test
+```
+Or you can also use a loop device to make a regular file accessible as a block
+ device, but this is **not recommended** (because calling `mark_buffer_dirty`
+ may block on a loop device, which will cause write operation to be
+ considerably slow). Create a 4GB (any size, but not too small, will fit)
+ regular file (here we name it `wtfs.data`), do format and then mount it.
 ```Shell
 $ dd bs=4096 count=1048576 if=/dev/zero of=wtfs.data
 $ ./mkfs.wtfs -f wtfs.data
-$ sudo mount -o loop wtfs.data ~/wtfs-test
-```
-Or you can also use a block device (here we name it `/dev/sda`), but this is
- **not recommended**.
-```Shell
-$ sudo ./mkfs.wtfs -f /dev/sda
-$ sudo mount /dev/sda ~/wtfs-test
+$ sudo mount -o loop -t wtfs wtfs.data ~/wtfs-test
 ```
 
 After mount, you can do anything you want within this filesystem. Just have fun.

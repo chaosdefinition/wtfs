@@ -29,8 +29,8 @@
 #include "wtfs.h"
 
 /* declaration of file operations */
-static ssize_t wtfs_read(struct file * file, char __user * buf,
-	size_t length, loff_t * ppos);
+static ssize_t wtfs_read(struct file * file, char __user * buf, size_t length,
+	loff_t * ppos);
 static ssize_t wtfs_write(struct file * file, const char __user * buf,
 	size_t length, loff_t * ppos);
 static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence);
@@ -46,10 +46,11 @@ const struct file_operations wtfs_file_ops = {
 };
 
 /* structure to store I/O position */
-static struct wtfs_file_pos
+struct wtfs_file_pos
 {
-	uint64_t blk_no;
 	uint64_t pos;
+	uint64_t blk_no;
+	uint64_t new_blk_flag;
 };
 
 /********************* implementation of read *********************************/
@@ -64,8 +65,8 @@ static struct wtfs_file_pos
  *
  * return: size of content actually read or error code
  */
-static ssize_t wtfs_read(struct file * file, char __user * buf,
-	size_t length, loff_t * ppos)
+static ssize_t wtfs_read(struct file * file, char __user * buf, size_t length,
+	loff_t * ppos)
 {
 	struct inode * vi = file->f_inode;
 	struct super_block * vsb = vi->i_sb;
@@ -174,6 +175,7 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 	struct inode * vi = file->f_inode;
 	struct super_block * vsb = vi->i_sb;
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
+	struct wtfs_file_pos * file_pos = file->private_data;
 	struct wtfs_data_block * block = NULL;
 	struct buffer_head * bh = NULL, * bh2 = NULL;
 	uint64_t i, count, offset, next;
@@ -187,20 +189,36 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 	count = *ppos / WTFS_DATA_SIZE;
 	offset = *ppos % WTFS_DATA_SIZE;
 
-	/* skip the first count-th blocks from beginning */
-	next = info->first_block;
-	for (i = 0; next != 0 && i < count; ++i) {
+	if (file_pos->pos != 0 && file_pos->pos == *ppos) {
+		/*
+		 * this is the subsequent call of previous write
+		 * use the last block number directly
+		 */
+		next = file_pos->blk_no;
 		if ((bh = sb_bread(vsb, next)) == NULL) {
 			wtfs_error("unable to read the block %llu\n", next);
 			goto error;
 		}
-		block = (struct wtfs_data_block *)bh->b_data;
-		next = wtfs64_to_cpu(block->next);
-		/* do not release the last block */
-		if (next == 0 || i == count) {
-			break;
+		if (file_pos->new_blk_flag) {
+			block = (struct wtfs_data_block *)bh->b_data;
+			next = wtfs64_to_cpu(block->next);
 		}
-		brelse(bh);
+	} else {
+		/* skip the first count-th blocks from beginning */
+		next = info->first_block;
+		for (i = 0; next != 0 && i < count; ++i) {
+			if ((bh = sb_bread(vsb, next)) == NULL) {
+				wtfs_error("unable to read the block %llu\n", next);
+				goto error;
+			}
+			block = (struct wtfs_data_block *)bh->b_data;
+			next = wtfs64_to_cpu(block->next);
+			/* do not release the last block */
+			if (next == 0 || i == count) {
+				break;
+			}
+			brelse(bh);
+		}
 	}
 
 	/* start writing */
@@ -236,6 +254,14 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 		copy_from_user(block->data + offset, buf + ret, nbytes);
 		mark_buffer_dirty(bh);
 
+		/* record block number and flag */
+		if (nbytes == WTFS_DATA_SIZE - offset) {
+			file_pos->new_blk_flag = 1;
+		} else {
+			file_pos->new_blk_flag = 0;
+		}
+		file_pos->blk_no = next;
+
 		/* update bytes write */
 		ret += nbytes;
 		length -= nbytes;
@@ -256,6 +282,9 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 	/* update file size */
 	i_size_write(vi, *ppos);
 	mark_inode_dirty(vi);
+
+	/* record the position written */
+	file_pos->pos = *ppos;
 
 	return ret;
 
