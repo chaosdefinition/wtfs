@@ -18,20 +18,36 @@
 # You should have received a copy of the GNU General Public License
 # along with wtfs.  If not, see <http://www.gnu.org/licenses/>.
 
+CC := cc
+DEBUG_CFLAGS := -DDEBUG -g
+RM := rm -rf
+
 obj-m := wtfs.o
 wtfs-objs := super.o inode.o file.o dir.o helper.o
 
-all: mkfs.wtfs statfs.wtfs module
+all: programs module
+
+programs: mkfs.wtfs statfs.wtfs
+
+mkfs.wtfs: mkfs.wtfs.c
+	$(CC) $(CFLAGS) -o mkfs.wtfs mkfs.wtfs.c
+
+statfs.wtfs: statfs.wtfs.c
+	$(CC) $(CFLAGS) -o statfs.wtfs statfs.wtfs.c
 
 module:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
 
-mkfs.wtfs_SOURCES:
-	mkfs.wtfs.c
+debug:
+	make programs CFLAGS="$(DEBUG_CFLAGS)"
+	make module CONFIG_DEBUG_INFO=1 KCFLAGS="$(DEBUG_CFLAGS)"
 
-statfs.wtfs_SOURCES:
-	statfs.wtfs.c
+clean: clean_programs clean_module
 
-clean:
+clean_programs:
+	$(RM) mkfs.wtfs statfs.wtfs
+
+clean_module:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-	rm -rf mkfs.wtfs statfs.wtfs
+
+.PHONY: mkfs.wtfs statfs.wtfs

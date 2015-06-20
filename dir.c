@@ -74,9 +74,9 @@ static int wtfs_iterate(struct file * file, struct dir_context * ctx)
 		}
 		block = (struct wtfs_data_block *)bh->b_data;
 		for (k = 0; k < WTFS_DENTRY_COUNT_PER_BLOCK; ++k) {
-			if (block->entries[j].inode_no != 0) {
+			if (block->entries[k].inode_no != 0) {
 				if (j >= count && i < info->dir_entry_count) {
-					wtfs_debug("emitting entry '%s' of %llu\n",
+					wtfs_debug("emitting entry '%s' of inode %llu\n",
 						block->entries[k].filename,
 						wtfs64_to_cpu(block->entries[k].inode_no));
 

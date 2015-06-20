@@ -130,13 +130,13 @@ static int read_super_block(int fd)
 
 static int read_inode_table(int fd)
 {
-	struct wtfs_data_block bitmap;
+	struct wtfs_data_block block;
 	uint64_t next = WTFS_RB_INODE_TABLE;
 	int i = 0;
 
 	while (next != 0) {
 		lseek(fd, next * WTFS_BLOCK_SIZE, SEEK_SET);
-		if (read(fd, &bitmap, sizeof(bitmap)) != sizeof(bitmap)) {
+		if (read(fd, &block, sizeof(block)) != sizeof(block)) {
 			return -EIO;
 		}
 
@@ -145,7 +145,7 @@ static int read_inode_table(int fd)
 		} else {
 			printf("->%lu", next);
 		}
-		next = wtfs64_to_cpu(bitmap.next);
+		next = wtfs64_to_cpu(block.next);
 		++i;
 	}
 	printf("\ntotal %d tables\n\n", i);
