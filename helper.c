@@ -41,7 +41,7 @@ static void __wtfs_free_obj(struct super_block * vsb, uint64_t entry,
  * @vsb: the VFS super block structure
  * @inode_no: inode number
  *
- * return: a pointer to the VFS inode
+ * return: a pointer to the VFS inode on success, error code otherwise
  */
 struct inode * wtfs_iget(struct super_block * vsb, uint64_t inode_no)
 {
@@ -104,6 +104,11 @@ struct inode * wtfs_iget(struct super_block * vsb, uint64_t inode_no)
 		vi->i_fop = &wtfs_file_ops;
 		break;
 
+	case S_IFLNK:
+		i_size_write(vi, wtfs64_to_cpu(inode->file_size));
+		vi->i_op = &wtfs_symlink_inops;
+		break;
+
 	default:
 		wtfs_error("special file type not supported\n");
 		goto error;
@@ -134,7 +139,7 @@ error:
  * @inode_no: inode number
  * @pbh: a pointer to struct buffer_head
  *
- * return: a pointer to the physical inode or error
+ * return: a pointer to the physical inode on success, error code otherwise
  */
 struct wtfs_inode * wtfs_get_inode(struct super_block * vsb, uint64_t inode_no,
 	struct buffer_head ** pbh)
@@ -203,8 +208,8 @@ int is_ino_valid(struct super_block * vsb, uint64_t inode_no)
  * @entry: the entry block number
  * @count: the position of the block we want in the linked list
  *
- * return: a pointer to buffer_head structure containing the block
- *         it must be released after calling this function
+ * return: the buffer_head of the block on success, error code otherwise
+ *         it must be released outside after calling this function
  */
 struct buffer_head * wtfs_get_linked_block(struct super_block * vsb,
 	uint64_t entry, uint64_t count)
@@ -337,13 +342,14 @@ int wtfs_test_bitmap_bit(struct super_block * vsb, uint64_t entry,
  * initialize a block
  *
  * @vsb: the VFS super block structure
- * @prev: buffer_head of previous block to point to the block, can be NULL
  * @blk_no: block number
+ * @prev: buffer_head of previous block to point to the block, can be NULL
  *
- * return: the buffer_head of the block
+ * return: the buffer_head of the block on success, error code otherwise
+ *         it must be released outside after calling this function
  */
 struct buffer_head * wtfs_init_block(struct super_block * vsb,
-	struct buffer_head * prev, uint64_t blk_no)
+	uint64_t blk_no, struct buffer_head * prev)
 {
 	struct wtfs_data_block * blk = NULL;
 	struct buffer_head * bh = NULL;
@@ -381,7 +387,7 @@ error:
  *
  * @vsb: the VFS super block structure
  *
- * return: block number, 0 on fail
+ * return: block number on success, 0 otherwise
  */
 uint64_t wtfs_alloc_block(struct super_block * vsb)
 {
@@ -412,7 +418,7 @@ uint64_t wtfs_alloc_block(struct super_block * vsb)
  * @vsb: the VFS super block structure
  * @entry: block number of the first block/inode bitmap
  *
- * return: block/inode  number, 0 on fail
+ * return: block/inode number on success, 0 otherwise
  */
 static uint64_t __wtfs_alloc_obj(struct super_block * vsb, uint64_t entry)
 {
@@ -467,7 +473,7 @@ error:
  *
  * @vsb: the VFS super block structure
  *
- * return: inode number, 0 on fail
+ * return: inode number on success, 0 otherwise
  */
 uint64_t wtfs_alloc_free_inode(struct super_block * vsb)
 {
@@ -491,15 +497,20 @@ uint64_t wtfs_alloc_free_inode(struct super_block * vsb)
  *
  * @dir_vi: directory inode
  * @mode: file mode
+ * @path: path linking to, only valid when the new inode is to be a symlink
+ * @length: length of path, only valid when the new inode is to be a symlink
  *
- * return: the new inode or error code
+ * return: the new inode on success, error code otherwise
  */
-struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode)
+struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode,
+	const char * path, size_t length)
 {
 	struct super_block * vsb = dir_vi->i_sb;
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	struct inode * vi = NULL;
 	struct wtfs_inode_info * info = NULL;
+	struct wtfs_symlink_block * symlink = NULL;
+	struct buffer_head * bh = NULL;
 	int ret = -EINVAL;
 
 	/* alloc a new VFS inode */
@@ -525,6 +536,11 @@ struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode)
 		i_size_write(vi, 0);
 		break;
 
+	case S_IFLNK:
+		vi->i_op = &wtfs_symlink_inops;
+		i_size_write(vi, length);
+		break;
+
 	default:
 		wtfs_error("special file type not supported\n");
 		goto error;
@@ -545,7 +561,18 @@ struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode)
 		ret = -ENOSPC;
 		goto error;
 	}
-	wtfs_init_block(vsb, NULL, info->first_block);
+	bh = wtfs_init_block(vsb, info->first_block, NULL);
+	if (IS_ERR(bh)) {
+		ret = PTR_ERR(bh);
+		goto error;
+	}
+	if (S_ISLNK(mode)) {
+		symlink = (struct wtfs_symlink_block *)bh->b_data;
+		symlink->length = cpu_to_wtfs16(length);
+		memcpy(symlink->path, path, length);
+		mark_buffer_dirty(bh);
+	}
+	brelse(bh);
 
 	/* set other things */
 	inode_init_owner(vi, dir_vi, mode);
@@ -636,7 +663,7 @@ void wtfs_free_inode(struct super_block * vsb, uint64_t inode_no)
  *
  * @vsb: the VFS super block structure
  *
- * return: status
+ * return: 0 on success, error code otherwise
  */
 int wtfs_sync_super(struct super_block * vsb)
 {
@@ -683,7 +710,7 @@ error:
  * @dir_vi: the VFS inode of the directory
  * @dentry: the dentry to search
  *
- * return: inode number, 0 on fail
+ * return: inode number on success, 0 otherwise
  */
 uint64_t wtfs_find_inode(struct inode * dir_vi, struct dentry * dentry)
 {
@@ -792,7 +819,7 @@ int wtfs_add_entry(struct inode * dir_vi, uint64_t inode_no,
 		ret = -ENOSPC;
 		goto error;
 	}
-	bh2 = wtfs_init_block(vsb, bh, blk_no);
+	bh2 = wtfs_init_block(vsb, blk_no, bh);
 	if (IS_ERR(bh2)) {
 		ret = PTR_ERR(bh2);
 		bh2 = NULL;

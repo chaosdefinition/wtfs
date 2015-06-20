@@ -235,7 +235,7 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 			if ((blk_no = wtfs_alloc_block(vsb)) == 0) {
 				break;
 			}
-			bh2 = wtfs_init_block(vsb, bh, blk_no);
+			bh2 = wtfs_init_block(vsb, blk_no, bh);
 			if (IS_ERR(bh2)) {
 				wtfs_free_block(vsb, blk_no);
 				break;
@@ -352,7 +352,7 @@ error:
 /*
  * routine called when the last reference to an open file is closed
  *
- * @vi: the VFS inode to open
+ * @vi: the VFS inode associated with the file
  * @file: the VFS file structure
  *
  * return: 0

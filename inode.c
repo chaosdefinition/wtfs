@@ -23,6 +23,10 @@
 #include <linux/fs.h>
 #include <linux/vfs.h>
 #include <linux/mount.h>
+#include <linux/namei.h>
+#include <linux/buffer_head.h>
+#include <linux/err.h>
+#include <linux/slab.h>
 
 #include "wtfs.h"
 
@@ -40,6 +44,12 @@ static int wtfs_rename(struct inode * old_dir, struct dentry * old_dentry,
 static int wtfs_setattr(struct dentry * dentry, struct iattr * attr);
 static int wtfs_getattr(struct vfsmount * mnt, struct dentry * dentry,
 	struct kstat * stat);
+static int wtfs_symlink(struct inode * dir_vi, struct dentry * dentry,
+	const char * symname);
+static int wtfs_readlink(struct dentry * dentry, char __user * buf, int length);
+static void * wtfs_follow_link(struct dentry * dentry, struct nameidata * nd);
+static void wtfs_put_link(struct dentry * dentry, struct nameidata * nd,
+	void * cookie);
 
 /* inode operations for directory */
 const struct inode_operations wtfs_dir_inops = {
@@ -49,12 +59,22 @@ const struct inode_operations wtfs_dir_inops = {
 	.mkdir = wtfs_mkdir,
 	.rmdir = wtfs_rmdir,
 	.rename = wtfs_rename,
+	.symlink = wtfs_symlink,
 	.setattr = wtfs_setattr,
 	.getattr = wtfs_getattr
 };
 
 /* inode operations for regular file */
 const struct inode_operations wtfs_file_inops = {
+	.setattr = wtfs_setattr,
+	.getattr = wtfs_getattr
+};
+
+/* inode operations for symbolic link */
+const struct inode_operations wtfs_symlink_inops = {
+	.readlink = wtfs_readlink,
+	.follow_link = wtfs_follow_link,
+	.put_link = wtfs_put_link,
 	.setattr = wtfs_setattr,
 	.getattr = wtfs_getattr
 };
@@ -80,7 +100,7 @@ static int wtfs_create(struct inode * dir_vi, struct dentry * dentry,
 		dentry->d_name.name);
 
 	/* create a new inode */
-	vi = wtfs_new_inode(dir_vi, mode | S_IFREG);
+	vi = wtfs_new_inode(dir_vi, mode | S_IFREG, NULL, 0);
 	if (IS_ERR(vi)) {
 		return PTR_ERR(vi);
 	}
@@ -178,7 +198,7 @@ static int wtfs_mkdir(struct inode * dir_vi, struct dentry * dentry,
 		"mode 0%o\n", dir_vi->i_ino, dentry->d_name.name, mode);
 
 	/* create a new inode */
-	vi = wtfs_new_inode(dir_vi, mode | S_IFDIR);
+	vi = wtfs_new_inode(dir_vi, mode | S_IFDIR, NULL, 0);
 	if (IS_ERR(vi)) {
 		return PTR_ERR(vi);
 	}
@@ -252,7 +272,7 @@ static int wtfs_rename(struct inode * old_dir, struct dentry * old_dentry,
 			}
 			break;
 
-		case S_IFREG:
+		case S_IFREG: case S_IFLNK:
 			if ((ret = wtfs_unlink(new_dir, new_dentry)) < 0) {
 				return ret;
 			}
@@ -338,4 +358,169 @@ static int wtfs_getattr(struct vfsmount * mnt, struct dentry * dentry,
 	stat->blksize = sbi->block_size;
 
 	return 0;
+}
+
+/********************* implementation of symlink ******************************/
+
+/*
+ * routine called to create a new symbolic link file
+ *
+ * @dir_vi: the VFS inode of the parent directory
+ * @dentry: dentry of the symlink file to create
+ * @symname: filename linking to
+ *
+ * return: 0 on success, error code otherwise
+ */
+static int wtfs_symlink(struct inode * dir_vi, struct dentry * dentry,
+	const char * symname)
+{
+	struct inode * vi = NULL;
+	size_t length;
+
+	wtfs_debug("symlink called, dir inode %lu, file '%s' linking to '%s'\n",
+		dir_vi->i_ino, dentry->d_name.name, symname);
+
+	/* check filename length */
+	length = strnlen(symname, WTFS_SYMLINK_MAX);
+	if (length == WTFS_SYMLINK_MAX) {
+		return -ENAMETOOLONG;
+	}
+
+	/* create a new inode */
+	vi = wtfs_new_inode(dir_vi, S_IFLNK | S_IRWXUGO, symname, length);
+	if (IS_ERR(vi)) {
+		return PTR_ERR(vi);
+	}
+
+	/* add an entry to its parent directory */
+	wtfs_add_entry(dir_vi, vi->i_ino, dentry->d_name.name, dentry->d_name.len);
+
+	d_instantiate(dentry, vi);
+
+	return 0;
+}
+
+/********************* implementation of readlink *****************************/
+
+/*
+ * routine called to read the content of a symbolic link
+ *
+ * @dentry: dentry of the symlink file to read
+ * @buf: the userspace buffer to hold the symlink content
+ * @length: length of the buffer in byte
+ *
+ * return: length of the symlink content on success, error code otherwise
+ */
+static int wtfs_readlink(struct dentry * dentry, char __user * buf, int length)
+{
+	struct nameidata nd;
+	void * cookie = NULL;
+	char * path = NULL;
+	size_t real_length;
+	int ret = -EINVAL;
+
+	wtfs_debug("readlink called, file '%s' of inode %lu\n",
+		dentry->d_name.name, dentry->d_inode->i_ino);
+
+	/* follow link */
+	nd.depth = 0;
+	cookie = dentry->d_inode->i_op->follow_link(dentry, &nd);
+	if (IS_ERR(cookie)) {
+		ret = PTR_ERR(cookie);
+		cookie = NULL;
+		goto error;
+	}
+
+	/* check length */
+	path = nd_get_link(&nd);
+	if (IS_ERR(path)) {
+		ret = PTR_ERR(path);
+		goto error;
+	}
+	real_length = strnlen(path, WTFS_SYMLINK_MAX);
+	if (real_length >= length) {
+		ret = -EFAULT;
+		goto error;
+	}
+
+	/* do copy to userspace */
+	if (copy_to_user(buf, path, real_length) != 0) {
+		ret = -EIO;
+		goto error;
+	}
+	buf[real_length] = '\0';
+
+	wtfs_debug("'%s' -> '%s' of length %ld\n", dentry->d_name.name, buf,
+		real_length);
+
+	/* release cookie */
+	dentry->d_inode->i_op->put_link(dentry, &nd, cookie);
+	return real_length;
+
+error:
+	if (cookie != NULL) {
+		dentry->d_inode->i_op->put_link(dentry, &nd, cookie);
+	}
+	return ret;
+}
+
+/********************* implementation of follow_link **************************/
+
+/*
+ * routine called by the VFS to follow a symbolic link to the inode it points to
+ *
+ * @dentry: dentry of the symlink file to follow
+ * @nd: nameidata structure to record the symlink path and depth
+ *
+ * return: buffer_head of the symlink block
+ */
+static void * wtfs_follow_link(struct dentry * dentry, struct nameidata * nd)
+{
+	struct inode * vi = dentry->d_inode;
+	struct super_block * vsb = vi->i_sb;
+	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
+	struct wtfs_symlink_block * symlink = NULL;
+	struct buffer_head * bh = NULL;
+	int ret = -EINVAL;
+
+	wtfs_debug("follow_link called, file '%s' of inode %lu\n",
+		dentry->d_name.name, vi->i_ino);
+
+	/* read symlink block */
+	if ((bh = sb_bread(vsb, info->first_block)) == NULL) {
+		wtfs_error("unable to read the block %llu\n", info->first_block);
+		ret = -EIO;
+		goto error;
+	}
+	symlink = (struct wtfs_symlink_block *)bh->b_data;
+
+	/* set link */
+	nd_set_link(nd, symlink->path);
+
+	return bh;
+
+error:
+	if (bh != NULL) {
+		brelse(bh);
+	}
+	return ERR_PTR(ret);
+}
+
+/********************* implementation of put_link *****************************/
+
+/*
+ * routine called by the VFS to release resources allocated by follow_link()
+ *
+ * @dentry: dentry of the symlink file to follow
+ * @nd: nameidata structure to record the symlink path and depth
+ * @cookie: buffer_head of the symlink block to release
+ */
+static void wtfs_put_link(struct dentry * dentry, struct nameidata * nd,
+	void * cookie)
+{
+	wtfs_debug("put_link called\n");
+
+	if (cookie != NULL) {
+		brelse((struct buffer_head *)cookie);
+	}
 }

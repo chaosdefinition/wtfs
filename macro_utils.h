@@ -25,6 +25,17 @@
 #ifndef WTFS_MACRO_UTILS_H_
 #define WTFS_MACRO_UTILS_H_
 
+/* for strrchr() */
+#ifdef __KERNEL__
+# include <linux/string.h>
+#else
+# include <string.h>
+#endif /* __KERNEL__ */
+
+/* filename without path */
+#define __FILENAME__\
+	(strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
+
 /* int types */
 typedef __u8 wtfs8_t;
 typedef __le16 wtfs16_t;

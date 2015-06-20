@@ -94,6 +94,9 @@
 /* max dentry count per block in wtfs */
 #define WTFS_DENTRY_COUNT_PER_BLOCK 63
 
+/* max length of symlink content in wtfs */
+#define WTFS_SYMLINK_MAX 4094
+
 /*
  * size of real data that each block can contain (except boot and super block)
  * we need the last 8 bytes as a pointer to another block
@@ -125,7 +128,7 @@
 #ifdef WTFS_DEBUG
 # define wtfs_debug(fmt, ...)\
 	printk(KERN_DEBUG "[wtfs] at %s:%d %s: " fmt,\
-	__FILE__, __LINE__, __func__, ##__VA_ARGS__)
+	__FILENAME__, __LINE__, __func__, ##__VA_ARGS__)
 # define wtfs_error(fmt, ...)\
 	printk(KERN_ERR "[wtfs]: " fmt, ##__VA_ARGS__)
 # define wtfs_info(fmt, ...)\
@@ -222,6 +225,13 @@ struct wtfs_data_block
 	wtfs64_t next;                      /* 8 bytes */
 };
 
+/* structure for symlink block */
+struct wtfs_symlink_block
+{
+	wtfs16_t length;                    /* 2 bytes */
+	char path[WTFS_SYMLINK_MAX];        /* 4094 bytes */
+};
+
 /* following only available for module itself */
 #ifdef __KERNEL__
 
@@ -268,6 +278,7 @@ static inline struct wtfs_inode_info * WTFS_INODE_INFO(struct inode * vi)
 extern const struct super_operations wtfs_super_ops;
 extern const struct inode_operations wtfs_file_inops;
 extern const struct inode_operations wtfs_dir_inops;
+extern const struct inode_operations wtfs_symlink_inops;
 extern const struct file_operations wtfs_file_ops;
 extern const struct file_operations wtfs_dir_ops;
 
@@ -285,10 +296,11 @@ extern int wtfs_clear_bitmap_bit(struct super_block * vsb, uint64_t entry,
 extern int wtfs_test_bitmap_bit(struct super_block * vsb, uint64_t entry,
 	uint64_t count, uint64_t offset);
 extern struct buffer_head * wtfs_init_block(struct super_block * vsb,
-	struct buffer_head * prev, uint64_t blk_no);
+	uint64_t blk_no, struct buffer_head * prev);
 extern uint64_t wtfs_alloc_block(struct super_block * vsb);
 extern uint64_t wtfs_alloc_free_inode(struct super_block * vsb);
-extern struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode);
+extern struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode,
+	const char * path, size_t length);
 extern void wtfs_free_block(struct super_block * vsb, uint64_t blk_no);
 extern void wtfs_free_inode(struct super_block * vsb, uint64_t inode_no);
 extern int wtfs_sync_super(struct super_block * vsb);
