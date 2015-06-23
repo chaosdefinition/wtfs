@@ -31,7 +31,7 @@
 static int wtfs_iterate(struct file * file, struct dir_context * ctx);
 
 const struct file_operations wtfs_dir_ops = {
-	.iterate = wtfs_iterate
+	.iterate = wtfs_iterate,
 };
 
 /********************* implementation of iterate ******************************/
@@ -51,7 +51,9 @@ static int wtfs_iterate(struct file * file, struct dir_context * ctx)
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(dir_vi);
 	struct wtfs_data_block * block = NULL;
 	struct buffer_head * bh = NULL;
-	uint64_t i, j, k, count, offset, next;
+	uint64_t count, offset, next, inode_no;
+	char * filename = NULL;
+	int i, j, k;
 	int ret = -EINVAL;
 
 	/* calculate how many entries we have counted, including null entries */
@@ -74,16 +76,18 @@ static int wtfs_iterate(struct file * file, struct dir_context * ctx)
 		}
 		block = (struct wtfs_data_block *)bh->b_data;
 		for (k = 0; k < WTFS_DENTRY_COUNT_PER_BLOCK; ++k) {
-			if (block->entries[k].inode_no != 0) {
+			inode_no = wtfs64_to_cpu(block->entries[k].inode_no);
+			filename = block->entries[k].filename;
+			if (inode_no != 0) {
 				if (j >= count && i < info->dir_entry_count) {
-					wtfs_debug("emitting entry '%s' of inode %llu\n",
-						block->entries[k].filename,
-						wtfs64_to_cpu(block->entries[k].inode_no));
+					wtfs_debug("emitting entry '%s' of "
+						"inode %llu\n",
+						filename, inode_no);
 
-					if (dir_emit(ctx, block->entries[k].filename,
-						strnlen(block->entries[k].filename, WTFS_FILENAME_MAX),
-						wtfs64_to_cpu(block->entries[k].inode_no),
-						DT_UNKNOWN) == 0) {
+					if (dir_emit(ctx, filename,
+						strnlen(filename,
+							WTFS_FILENAME_MAX),
+						inode_no, DT_UNKNOWN) == 0) {
 						brelse(bh);
 						return 0;
 					}

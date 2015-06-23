@@ -61,13 +61,13 @@ const struct inode_operations wtfs_dir_inops = {
 	.rename = wtfs_rename,
 	.symlink = wtfs_symlink,
 	.setattr = wtfs_setattr,
-	.getattr = wtfs_getattr
+	.getattr = wtfs_getattr,
 };
 
 /* inode operations for regular file */
 const struct inode_operations wtfs_file_inops = {
 	.setattr = wtfs_setattr,
-	.getattr = wtfs_getattr
+	.getattr = wtfs_getattr,
 };
 
 /* inode operations for symbolic link */
@@ -76,7 +76,7 @@ const struct inode_operations wtfs_symlink_inops = {
 	.follow_link = wtfs_follow_link,
 	.put_link = wtfs_put_link,
 	.setattr = wtfs_setattr,
-	.getattr = wtfs_getattr
+	.getattr = wtfs_getattr,
 };
 
 /********************* implementation of create *******************************/
@@ -106,7 +106,8 @@ static int wtfs_create(struct inode * dir_vi, struct dentry * dentry,
 	}
 
 	/* add an entry to its parent directory */
-	wtfs_add_entry(dir_vi, vi->i_ino, dentry->d_name.name, dentry->d_name.len);
+	wtfs_add_entry(dir_vi, vi->i_ino, dentry->d_name.name,
+		dentry->d_name.len);
 
 	d_instantiate(dentry, vi);
 
@@ -204,7 +205,8 @@ static int wtfs_mkdir(struct inode * dir_vi, struct dentry * dentry,
 	}
 
 	/* add an entry to its parent directory */
-	wtfs_add_entry(dir_vi, vi->i_ino, dentry->d_name.name, dentry->d_name.len);
+	wtfs_add_entry(dir_vi, vi->i_ino, dentry->d_name.name,
+		dentry->d_name.len);
 
 	/* add two entries of '.' and '..' to itself */
 	wtfs_add_entry(vi, vi->i_ino, ".", 1);
@@ -230,8 +232,9 @@ static int wtfs_rmdir(struct inode * dir_vi, struct dentry * dentry)
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(dentry->d_inode);
 	int ret = -ENOTEMPTY;
 
-	wtfs_debug("rmdir called, dir '%s' of inode %lu with entry count %llu\n",
-		dentry->d_name.name, dentry->d_inode->i_ino, info->dir_entry_count);
+	wtfs_debug("rmdir called, dir '%s' of inode %lu "
+		"with entry count %llu\n", dentry->d_name.name,
+		dentry->d_inode->i_ino, info->dir_entry_count);
 
 	/* call unlink() if it contains only 2 entries ('.' and '..') */
 	if (info->dir_entry_count == 2) {
@@ -260,8 +263,8 @@ static int wtfs_rename(struct inode * old_dir, struct dentry * old_dentry,
 	int ret = -EINVAL;
 
 	wtfs_debug("rename called to move '%s' in dir of inode %lu to "
-		"'%s' in dir of inode %lu\n", old_dentry->d_name.name, old_dir->i_ino,
-		new_dentry->d_name.name, new_dir->i_ino);
+		"'%s' in dir of inode %lu\n", old_dentry->d_name.name,
+		old_dir->i_ino, new_dentry->d_name.name, new_dir->i_ino);
 
 	/* destination entry exists, remove it */
 	if (new_vi != NULL) {
@@ -393,7 +396,8 @@ static int wtfs_symlink(struct inode * dir_vi, struct dentry * dentry,
 	}
 
 	/* add an entry to its parent directory */
-	wtfs_add_entry(dir_vi, vi->i_ino, dentry->d_name.name, dentry->d_name.len);
+	wtfs_add_entry(dir_vi, vi->i_ino, dentry->d_name.name,
+		dentry->d_name.len);
 
 	d_instantiate(dentry, vi);
 
@@ -424,7 +428,7 @@ static int wtfs_readlink(struct dentry * dentry, char __user * buf, int length)
 
 	/* follow link */
 	nd.depth = 0;
-	cookie = dentry->d_inode->i_op->follow_link(dentry, &nd);
+	cookie = wtfs_follow_link(dentry, &nd);
 	if (IS_ERR(cookie)) {
 		ret = PTR_ERR(cookie);
 		cookie = NULL;
@@ -454,12 +458,12 @@ static int wtfs_readlink(struct dentry * dentry, char __user * buf, int length)
 		real_length);
 
 	/* release cookie */
-	dentry->d_inode->i_op->put_link(dentry, &nd, cookie);
+	wtfs_put_link(dentry, &nd, cookie);
 	return real_length;
 
 error:
 	if (cookie != NULL) {
-		dentry->d_inode->i_op->put_link(dentry, &nd, cookie);
+		wtfs_put_link(dentry, &nd, cookie);
 	}
 	return ret;
 }
@@ -488,7 +492,8 @@ static void * wtfs_follow_link(struct dentry * dentry, struct nameidata * nd)
 
 	/* read symlink block */
 	if ((bh = sb_bread(vsb, info->first_block)) == NULL) {
-		wtfs_error("unable to read the block %llu\n", info->first_block);
+		wtfs_error("unable to read the block %llu\n",
+			info->first_block);
 		ret = -EIO;
 		goto error;
 	}

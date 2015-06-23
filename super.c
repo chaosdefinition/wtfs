@@ -34,6 +34,7 @@
 MODULE_ALIAS_FS("wtfs");
 MODULE_AUTHOR("Chaos Shen");
 MODULE_DESCRIPTION("What the fxck filesystem");
+MODULE_VERSION(__stringify(WTFS_VERSION));
 MODULE_LICENSE("GPL");
 
 /* declaration of module entry & exit points */
@@ -54,7 +55,7 @@ static struct file_system_type wtfs_type = {
 	.name = "wtfs",
 	.mount = wtfs_mount,
 	.kill_sb = wtfs_kill_sb,
-	.fs_flags = FS_REQUIRES_DEV
+	.fs_flags = FS_REQUIRES_DEV,
 };
 
 /* declaration of super block operations */
@@ -72,7 +73,7 @@ const struct super_operations wtfs_super_ops = {
 	.write_inode = wtfs_write_inode,
 	.evict_inode = wtfs_evict_inode,
 	.put_super = wtfs_put_super,
-	.statfs = wtfs_statfs
+	.statfs = wtfs_statfs,
 };
 
 /********************* implementation of alloc_inode **************************/
@@ -149,8 +150,10 @@ static int wtfs_write_inode(struct inode * vi, struct writeback_control * wbc)
 
 	/*
 	 * get the physical inode
-	 * note that the buffer_head is also pointing to the inode table containing
-	 * this inode, so we can directly write back this buffer_head later
+	 *
+	 * note that the buffer_head is also pointing to the inode table
+	 * containing this inode, so we can directly write back this
+	 * buffer_head later
 	 */
 	inode = wtfs_get_inode(vi->i_sb, vi->i_ino, &bh);
 	if (IS_ERR(inode)) {
@@ -311,7 +314,8 @@ static int wtfs_fill_super(struct super_block * vsb, void * data, int silent)
 
 	/* set block size */
 	if (!sb_set_blocksize(vsb, WTFS_BLOCK_SIZE)) {
-		wtfs_error("block size of %d bytes not supported\n", WTFS_BLOCK_SIZE);
+		wtfs_error("block size of %d bytes not supported\n",
+			WTFS_BLOCK_SIZE);
 		goto error;
 	}
 
@@ -324,7 +328,8 @@ static int wtfs_fill_super(struct super_block * vsb, void * data, int silent)
 	/* check if the magic number mismatches */
 	sb = (struct wtfs_super_block *)bh->b_data;
 	if (wtfs64_to_cpu(sb->magic) != WTFS_MAGIC) {
-		wtfs_error("magic number mismatch: 0x%llx\n", wtfs64_to_cpu(sb->magic));
+		wtfs_error("magic number mismatch: 0x%llx\n",
+			wtfs64_to_cpu(sb->magic));
 		ret = -EPERM;
 		goto error;
 	}
@@ -335,8 +340,7 @@ static int wtfs_fill_super(struct super_block * vsb, void * data, int silent)
 	}
 
 	/* allocate a memory for sb_info */
-	sbi = (struct wtfs_sb_info *)kzalloc(sizeof(struct wtfs_sb_info),
-		GFP_KERNEL);
+	sbi = (struct wtfs_sb_info *)kzalloc(sizeof(*sbi), GFP_KERNEL);
 	if (sbi == NULL) {
 		wtfs_error("memory allocate for sb_info failed\n");
 		ret = -ENOMEM;

@@ -42,7 +42,7 @@ const struct file_operations wtfs_file_ops = {
 	.write = wtfs_write,
 	.llseek = wtfs_llseek,
 	.open = wtfs_open,
-	.release = wtfs_release
+	.release = wtfs_release,
 };
 
 /* structure to store I/O position */
@@ -100,7 +100,8 @@ static ssize_t wtfs_read(struct file * file, char __user * buf, size_t length,
 		next = info->first_block;
 		for (i = 0; next != 0 && i < count; ++i) {
 			if ((bh = sb_bread(vsb, next)) == NULL) {
-				wtfs_error("unable to read the block %llu\n", next);
+				wtfs_error("unable to read the block %llu\n",
+					next);
 				goto error;
 			}
 			block = (struct wtfs_data_block *)bh->b_data;
@@ -208,7 +209,8 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 		next = info->first_block;
 		for (i = 0; next != 0 && i < count; ++i) {
 			if ((bh = sb_bread(vsb, next)) == NULL) {
-				wtfs_error("unable to read the block %llu\n", next);
+				wtfs_error("unable to read the block %llu\n",
+					next);
 				goto error;
 			}
 			block = (struct wtfs_data_block *)bh->b_data;
@@ -227,7 +229,8 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 		if (next != 0) {
 			brelse(bh);
 			if ((bh = sb_bread(vsb, next)) == NULL) {
-				wtfs_error("unable to read the block %llu\n", next);
+				wtfs_error("unable to read the block %llu\n",
+					next);
 				break;
 			}
 		} else {
@@ -331,7 +334,7 @@ static int wtfs_open(struct inode * vi, struct file * file)
 
 	if (file->private_data == NULL) {
 		/* alloc a new struct wtfs_file_pos */
-		data = (struct wtfs_file_pos *)kzalloc(sizeof(struct wtfs_file_pos),
+		data = (struct wtfs_file_pos *)kzalloc(sizeof(*data),
 			GFP_KERNEL);
 		if (data == NULL) {
 			ret = -ENOMEM;

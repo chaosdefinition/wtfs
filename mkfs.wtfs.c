@@ -34,6 +34,8 @@
 
 #include "wtfs.h"
 
+#define BUF_SIZE 4096
+
 static int write_boot_block(int fd);
 static int write_super_block(int fd, uint64_t blocks, uint64_t inode_tables,
 	uint64_t blk_bitmaps, uint64_t inode_bitmaps);
@@ -69,10 +71,15 @@ int main(int argc, char * const * argv)
 	/* inode bitmaps */
 	uint64_t inode_bitmaps;
 
-	const char * usage = "Usage: mkfs.wtfs [-fq] device\n\n"
-						 "  -f                    quick format\n"
-						 "  -q                    quiet mode\n\n";
+	char err_msg[BUF_SIZE], * tmp = NULL;
+
 	struct stat stat;
+
+	const char * usage = "Usage: mkfs.wtfs [OPTIONS] <DEVICE>\n"
+			     "Options:\n"
+			     "  -f                    quick format\n"
+			     "  -q                    quiet mode\n"
+			     "\n";
 
 	/* parse arguments */
 	while ((opt = getopt(argc, argv, "fq")) != -1) {
@@ -86,7 +93,8 @@ int main(int argc, char * const * argv)
 			break;
 
 		default:
-			fprintf(stderr, "mkfs.wtfs: illegal option -- %c\n", opt);
+			fprintf(stderr, "%s: illegal option -- %c\n",
+				argv[0], opt);
 			printf("%s", usage);
 			goto error;
 		}
@@ -100,13 +108,17 @@ int main(int argc, char * const * argv)
 
 	/* open device file */
 	if ((fd = open(argv[optind], O_RDWR)) < 0) {
-		perror("mkfs.wtfs: cannot open device");
+		snprintf(err_msg, BUF_SIZE, "%s: cannot open '%s'",
+			argv[0], argv[optind]);
+		perror(err_msg);
 		goto error;
 	}
 
 	/* get device file stat */
 	if (fstat(fd, &stat) < 0) {
-		perror("mkfs.wtfs: unable to stat device file");
+		snprintf(err_msg, BUF_SIZE, "%s: unable to stat '%s'",
+			argv[0], argv[optind]);
+		perror(err_msg);
 		goto error;
 	}
 
@@ -115,7 +127,10 @@ int main(int argc, char * const * argv)
 	case S_IFBLK:
 		/* get device size */
 		if (ioctl(fd, BLKGETSIZE64, &bytes) < 0) {
-			perror("mkfs.wtfs: unable to get the device size");
+			snprintf(err_msg, BUF_SIZE,
+				"%s: unable to get the size of '%s'",
+				argv[0], argv[optind]);
+			perror(err_msg);
 			goto error;
 		}
 		break;
@@ -126,8 +141,10 @@ int main(int argc, char * const * argv)
 		break;
 
 	default:
-		fprintf(stderr, "mkfs.wtfs: only block device and regular file "
-			"supported\n");
+		snprintf(err_msg, BUF_SIZE,
+			"%s: only block device and regular file supported\n",
+			argv[0]);
+		perror(err_msg);
 		goto error;
 	}
 
@@ -136,8 +153,9 @@ int main(int argc, char * const * argv)
 	inode_tables = WTFS_DATA_SIZE * 8 / WTFS_INODE_COUNT_PER_TABLE + 1;
 	blk_bitmaps = blocks / (WTFS_DATA_SIZE * 8);
 	inode_bitmaps = 1;
-	if (blocks < inode_tables + blk_bitmaps + 4) {
-		fprintf(stderr, "mkfs.wtfs: volume of device too small\n");
+	if (blocks < inode_tables + blk_bitmaps + inode_bitmaps + 3) {
+		snprintf(err_msg, BUF_SIZE, "%s: volume too small", argv[0]);
+		perror(err_msg);
 		goto error;
 	}
 	if (blocks % (WTFS_DATA_SIZE * 8) != 0) {
@@ -146,41 +164,45 @@ int main(int argc, char * const * argv)
 
 	/* do format */
 	if (write_boot_block(fd) < 0) {
-		fprintf(stderr, "mkfs.wtfs: write the bootloader block failed\n");
-		goto error;
+		tmp = "bootloader block";
+		goto out;
 	}
-	if (write_super_block(fd, blocks, inode_tables, blk_bitmaps, inode_bitmaps)
-		< 0) {
-		fprintf(stderr, "mkfs.wtfs: write the super block failed\n");
-		goto error;
+	if (write_super_block(fd, blocks, inode_tables, blk_bitmaps,
+			inode_bitmaps) < 0) {
+		tmp = "super block";
+		goto out;
 	}
 	if (write_inode_table(fd, inode_tables) < 0) {
-		fprintf(stderr, "mkfs.wtfs: write the inode table failed\n");
-		goto error;
+		tmp = "inode table";
+		goto out;
 	}
 	if (write_block_bitmap(fd, inode_tables, blk_bitmaps) < 0) {
-		fprintf(stderr, "mkfs.wtfs: write the block bitmap failed\n");
-		goto error;
+		tmp = "block bitmap";
+		goto out;
 	}
-	if (write_inode_bitmap(fd, inode_tables, blk_bitmaps, inode_bitmaps) < 0) {
-		fprintf(stderr, "mkfs.wtfs: write the inode bitmap failed\n");
-		goto error;
+	if (write_inode_bitmap(fd, inode_tables, blk_bitmaps,
+			inode_bitmaps) < 0) {
+		tmp = "inode bitmap";
+		goto out;
 	}
 	if (write_root_dir(fd) < 0) {
-		fprintf(stderr, "mkfs.wtfs: write the root directory failed\n");
-		goto error;
+		tmp = "root directory";
+		goto out;
 	}
 	if (quick) {
 		if (!quiet) {
 			printf("quick format completed\n");
 		}
 	} else {
-		do_deep_format(fd, blocks, inode_tables, blk_bitmaps, inode_bitmaps,
-			quiet);
+		do_deep_format(fd, blocks, inode_tables, blk_bitmaps,
+			inode_bitmaps, quiet);
 	}
 
 	close(fd);
 	return 0;
+
+out:
+	fprintf(stderr, "%s: write %s failed\n", argv[0], tmp);
 
 error:
 	if (fd >= 0) {
@@ -217,7 +239,8 @@ static int write_super_block(int fd, uint64_t blocks, uint64_t inode_tables,
 		.inode_bitmap_first = cpu_to_wtfs64(WTFS_RB_INODE_BITMAP),
 		.inode_bitmap_count = cpu_to_wtfs64(inode_bitmaps),
 		.inode_count = cpu_to_wtfs64(1),
-		.free_block_count = cpu_to_wtfs64(blocks - inode_tables - blk_bitmaps - inode_bitmaps - 3)
+		.free_block_count = cpu_to_wtfs64(blocks - inode_tables -
+			blk_bitmaps - inode_bitmaps - 3)
 	};
 
 	lseek(fd, WTFS_RB_SUPER * WTFS_BLOCK_SIZE, SEEK_SET);
@@ -274,7 +297,8 @@ static int write_inode_table(int fd, uint64_t inode_tables)
 	inode_table.inodes[0] = inode;
 	inode_table.next = wtfs64_to_cpu(index[1]);
 	lseek(fd, index[0] * WTFS_BLOCK_SIZE, SEEK_SET);
-	if (write(fd, &inode_table, sizeof(inode_table)) != sizeof(inode_table)) {
+	if (write(fd, &inode_table, sizeof(inode_table)) !=
+		sizeof(inode_table)) {
 		ret = -EIO;
 		goto error;
 	}
@@ -284,7 +308,8 @@ static int write_inode_table(int fd, uint64_t inode_tables)
 	for (i = 1; i < inode_tables; ++i) {
 		inode_table.next = wtfs64_to_cpu(index[i + 1]);
 		lseek(fd, index[i] * WTFS_BLOCK_SIZE, SEEK_SET);
-		if (write(fd, &inode_table, sizeof(inode_table)) != sizeof(inode_table)) {
+		if (write(fd, &inode_table, sizeof(inode_table)) !=
+			sizeof(inode_table)) {
 			ret = -EIO;
 			goto error;
 		}
@@ -390,7 +415,8 @@ static int write_inode_bitmap(int fd, uint64_t inode_tables,
 	};
 
 	lseek(fd, WTFS_RB_INODE_BITMAP * WTFS_BLOCK_SIZE, SEEK_SET);
-	if (write(fd, &inode_bitmap, sizeof(inode_bitmap)) != sizeof(inode_bitmap)) {
+	if (write(fd, &inode_bitmap, sizeof(inode_bitmap)) !=
+		sizeof(inode_bitmap)) {
 		return -EIO;
 	} else {
 		return 0;
@@ -422,7 +448,8 @@ static int write_root_dir(int fd)
 static void do_deep_format(int fd, uint64_t blocks, uint64_t inode_tables,
 	uint64_t blk_bitmaps, uint64_t inode_bitmaps, int quiet)
 {
-	uint64_t start = WTFS_DB_FIRST + inode_tables + blk_bitmaps + inode_bitmaps - 2;
+	uint64_t start = WTFS_DB_FIRST + inode_tables + blk_bitmaps +
+		inode_bitmaps - 2;
 	uint64_t i, percent, prev = 0;
 	struct wtfs_data_block block;
 

@@ -30,6 +30,8 @@
 
 #include "wtfs.h"
 
+#define BUF_SIZE 4096
+
 static int read_boot_block(int fd);
 static int read_super_block(int fd);
 static int read_inode_table(int fd);
@@ -40,6 +42,7 @@ static int read_root_dir(int fd);
 int main(int argc, char * const * argv)
 {
 	int fd = -1;
+	char err_msg[BUF_SIZE], * tmp = NULL;
 	const char * usage = "Usage: statfs.wtfs device\n\n";
 
 	if (argc != 2) {
@@ -49,38 +52,43 @@ int main(int argc, char * const * argv)
 
 	/* open device file */
 	if ((fd = open(argv[1], O_RDONLY)) < 0) {
-		perror("mkfs.wtfs: cannot open device");
+		snprintf(err_msg, BUF_SIZE, "%s: cannot open '%s'",
+			argv[0], argv[1]);
+		perror(err_msg);
 		goto error;
 	}
 
 	/* read blocks */
 	if (read_boot_block(fd) < 0) {
-		fprintf(stderr, "statfs.wtfs: unable to read the bootloader block\n");
-		goto error;
+		tmp = "bootloader block";
+		goto out;
 	}
 	if (read_super_block(fd) < 0) {
-		fprintf(stderr, "statfs.wtfs: unable to read the super block\n");
-		goto error;
+		tmp = "super block";
+		goto out;
 	}
 	if (read_inode_table(fd) < 0) {
-		fprintf(stderr, "statfs.wtfs: unable to read the inode table\n");
-		goto error;
+		tmp = "inode table";
+		goto out;
 	}
 	if (read_block_bitmap(fd) < 0) {
-		fprintf(stderr, "statfs.wtfs: unable to read the block bitmap\n");
-		goto error;
+		tmp = "block bitmap";
+		goto out;
 	}
 	if (read_inode_bitmap(fd) < 0) {
-		fprintf(stderr, "statfs.wtfs: unable to read the inode bitmap\n");
-		goto error;
+		tmp = "inode bitmap";
+		goto out;
 	}
 	if (read_root_dir(fd) < 0) {
-		fprintf(stderr, "statfs.wtfs: unable to read the root directory\n");
-		goto error;
+		tmp = "root directory";
+		goto out;
 	}
 
 	close(fd);
 	return 0;
+
+out:
+	fprintf(stderr, "%s: unable to read %s\n", argv[0], tmp);
 
 error:
 	if (fd >= 0) {
@@ -111,19 +119,32 @@ static int read_super_block(int fd)
 
 	version = wtfs64_to_cpu(sb.version);
 	printf("wtfs on this device\n");
-	printf("version:                %lu.%lu.%lu\n", WTFS_VERSION_MAJOR(version),
-		WTFS_VERSION_MINOR(version), WTFS_VERSION_PATCH(version));
-	printf("magic number:           0x%llx\n", wtfs64_to_cpu(sb.magic));
-	printf("block size:             %llu\n", wtfs64_to_cpu(sb.block_size));
-	printf("total blocks:           %llu\n", wtfs64_to_cpu(sb.block_count));
-	printf("first inode table:      %llu\n", wtfs64_to_cpu(sb.inode_table_first));
-	printf("total inode tables:     %llu\n", wtfs64_to_cpu(sb.inode_table_count));
-	printf("first block bitmap:     %llu\n", wtfs64_to_cpu(sb.block_bitmap_first));
-	printf("total block bitmaps:    %llu\n", wtfs64_to_cpu(sb.block_bitmap_count));
-	printf("first inode bitmap:     %llu\n", wtfs64_to_cpu(sb.inode_bitmap_first));
-	printf("total inode bitmaps:    %llu\n", wtfs64_to_cpu(sb.inode_bitmap_count));
-	printf("total inodes:           %llu\n", wtfs64_to_cpu(sb.inode_count));
-	printf("free blocks:            %llu\n\n", wtfs64_to_cpu(sb.free_block_count));
+	printf("%-24s%lu.%lu.%lu\n", "version:",
+		WTFS_VERSION_MAJOR(version),
+		WTFS_VERSION_MINOR(version),
+		WTFS_VERSION_PATCH(version));
+	printf("%-24s0x%llx\n", "magic number:",
+		wtfs64_to_cpu(sb.magic));
+	printf("%-24s%llu\n", "block size:",
+		wtfs64_to_cpu(sb.block_size));
+	printf("%-24s%llu\n", "total blocks:",
+		wtfs64_to_cpu(sb.block_count));
+	printf("%-24s%llu\n", "first inode table:",
+		wtfs64_to_cpu(sb.inode_table_first));
+	printf("%-24s%llu\n", "total inode tables:",
+		wtfs64_to_cpu(sb.inode_table_count));
+	printf("%-24s%llu\n", "first block bitmap:",
+		wtfs64_to_cpu(sb.block_bitmap_first));
+	printf("%-24s%llu\n", "total block bitmaps:",
+		wtfs64_to_cpu(sb.block_bitmap_count));
+	printf("%-24s%llu\n", "first inode bitmap:",
+		wtfs64_to_cpu(sb.inode_bitmap_first));
+	printf("%-24s%llu\n", "total inode bitmaps:",
+		wtfs64_to_cpu(sb.inode_bitmap_count));
+	printf("%-24s%llu\n", "total inodes:",
+		wtfs64_to_cpu(sb.inode_count));
+	printf("%-24s%llu\n\n", "free blocks:",
+		wtfs64_to_cpu(sb.free_block_count));
 
 	return 0;
 }
@@ -199,7 +220,8 @@ static int read_root_dir(int fd)
 {
 	struct wtfs_data_block root_dir;
 	int i;
-	uint64_t next = WTFS_DB_FIRST;
+	uint64_t next = WTFS_DB_FIRST, inode_no;
+	char * filename = NULL;
 
 	while (next != 0) {
 		lseek(fd, next * WTFS_BLOCK_SIZE, SEEK_SET);
@@ -212,10 +234,10 @@ static int read_root_dir(int fd)
 		}
 
 		for (i = 0; i < WTFS_DENTRY_COUNT_PER_BLOCK; ++i) {
-			if (root_dir.entries[i].inode_no != 0) {
-				printf("%llu  %s\n",
-					wtfs64_to_cpu(root_dir.entries[i].inode_no),
-					root_dir.entries[i].filename);
+			inode_no = wtfs64_to_cpu(root_dir.entries[i].inode_no);
+			filename = root_dir.entries[i].filename;
+			if (inode_no != 0) {
+				printf("%lu  %s\n", inode_no, filename);
 			}
 		}
 		next = wtfs64_to_cpu(root_dir.next);

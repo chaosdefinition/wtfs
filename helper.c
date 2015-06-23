@@ -55,7 +55,8 @@ struct inode * wtfs_iget(struct super_block * vsb, uint64_t inode_no)
 	/* get inode in cache */
 	vi = iget_locked(vsb, (unsigned long)inode_no);
 	if (vi == NULL) {
-		wtfs_error("unable to get the inode of number %llu\n", inode_no);
+		wtfs_error("unable to get the inode of number %llu\n",
+			inode_no);
 		ret = -ENOMEM;
 		goto error;
 	}
@@ -92,7 +93,8 @@ struct inode * wtfs_iget(struct super_block * vsb, uint64_t inode_no)
 	info->first_block = wtfs64_to_cpu(inode->first_block);
 	switch (vi->i_mode & S_IFMT) {
 	case S_IFDIR:
-		i_size_write(vi, wtfs64_to_cpu(inode->block_count) * sbi->block_size);
+		i_size_write(vi, wtfs64_to_cpu(inode->block_count) *
+			sbi->block_size);
 		vi->i_op = &wtfs_dir_inops;
 		vi->i_fop = &wtfs_dir_ops;
 		info->dir_entry_count = wtfs64_to_cpu(inode->dir_entry_count);
@@ -172,7 +174,8 @@ struct wtfs_inode * wtfs_get_inode(struct super_block * vsb, uint64_t inode_no,
 error:
 	if (*pbh != NULL) {
 		brelse(*pbh);
-		*pbh = NULL; /* here we set it to NULL to avoid freeing it twice */
+		/* here we set it to NULL to avoid freeing it twice */
+		*pbh = NULL;
 	}
 	return ERR_PTR(ret);
 }
@@ -196,7 +199,8 @@ int is_ino_valid(struct super_block * vsb, uint64_t inode_no)
 	block = inode_no / (WTFS_DATA_SIZE * 8);
 	offset = inode_no % (WTFS_DATA_SIZE * 8);
 
-	return wtfs_test_bitmap_bit(vsb, sbi->inode_bitmap_first, block, offset);
+	return wtfs_test_bitmap_bit(vsb, sbi->inode_bitmap_first, block,
+		offset);
 }
 
 /********************* implementation of wtfs_get_linked_block ****************/
@@ -439,7 +443,8 @@ static uint64_t __wtfs_alloc_obj(struct super_block * vsb, uint64_t entry)
 		wtfs_debug("finding first zero bit in bitmap %llu\n", next);
 		j = wtfs_find_first_zero_bit(bitmap->data, WTFS_DATA_SIZE * 8);
 		if (j < WTFS_DATA_SIZE * 8) {
-			wtfs_debug("find a zero bit %llu in bitmap %llu\n", j, next);
+			wtfs_debug("find a zero bit %llu in bitmap %llu\n",
+				j, next);
 			wtfs_set_bit(j, bitmap->data);
 			mark_buffer_dirty(bh);
 			brelse(bh);
@@ -718,7 +723,8 @@ uint64_t wtfs_find_inode(struct inode * dir_vi, struct dentry * dentry)
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(dir_vi);
 	struct wtfs_data_block * block = NULL;
 	struct buffer_head * bh = NULL;
-	uint64_t i, next = info->first_block;
+	uint64_t next = info->first_block, inode_no;
+	int i;
 
 	/* first check if name is too long */
 	if (dentry->d_name.len >= WTFS_FILENAME_MAX) {
@@ -733,11 +739,11 @@ uint64_t wtfs_find_inode(struct inode * dir_vi, struct dentry * dentry)
 		}
 		block = (struct wtfs_data_block *)bh->b_data;
 		for (i = 0; i < WTFS_INODE_COUNT_PER_TABLE; ++i) {
-			if (block->entries[i].inode_no != 0 &&
-				strcmp(block->entries[i].filename, dentry->d_name.name) == 0) {
-				next = wtfs64_to_cpu(block->entries[i].inode_no);
+			inode_no = wtfs64_to_cpu(block->entries[i].inode_no);
+			if (inode_no != 0 && strcmp(block->entries[i].filename,
+					dentry->d_name.name) == 0) {
 				brelse(bh);
-				return next;
+				return inode_no;
 			}
 		}
 		next = wtfs64_to_cpu(block->next);
@@ -768,10 +774,12 @@ int wtfs_add_entry(struct inode * dir_vi, uint64_t inode_no,
 	const char * filename, size_t length)
 {
 	struct super_block * vsb = dir_vi->i_sb;
+	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	struct wtfs_inode_info * dir_info = WTFS_INODE_INFO(dir_vi);
 	struct wtfs_data_block * block = NULL;
 	struct buffer_head * bh = NULL, * bh2 = NULL;
-	uint64_t i, next = dir_info->first_block, blk_no = 0;
+	uint64_t next = dir_info->first_block, blk_no = 0;
+	int i;
 	int ret = -EINVAL;
 
 	/* check name */
@@ -797,17 +805,22 @@ int wtfs_add_entry(struct inode * dir_vi, uint64_t inode_no,
 			/* find it */
 			if (block->entries[i].inode_no == 0) {
 				block->entries[i].inode_no = inode_no;
-				strncpy(block->entries[i].filename, filename, length);
+				strncpy(block->entries[i].filename, filename,
+					length);
 				mark_buffer_dirty(bh);
 				brelse(bh);
-				dir_vi->i_ctime = dir_vi->i_mtime = CURRENT_TIME_SEC;
+				dir_vi->i_ctime = CURRENT_TIME_SEC;
+				dir_vi->i_mtime = CURRENT_TIME_SEC;
 				++dir_info->dir_entry_count;
 				mark_inode_dirty(dir_vi);
 				return 0;
 			}
 		}
 		next = wtfs64_to_cpu(block->next);
-		/* do not release the last block because we are to set its pointer */
+		/*
+		 * do not release the last block because we are to set its
+		 * pointer
+		 */
 		if (next == 0) {
 			break;
 		}
@@ -835,7 +848,7 @@ int wtfs_add_entry(struct inode * dir_vi, uint64_t inode_no,
 	/* update parent directory's information */
 	dir_vi->i_ctime = dir_vi->i_mtime = CURRENT_TIME_SEC;
 	++dir_vi->i_blocks;
-	i_size_write(dir_vi, i_size_read(dir_vi) + WTFS_SB_INFO(vsb)->block_size);
+	i_size_write(dir_vi, i_size_read(dir_vi) + sbi->block_size);
 	++dir_info->dir_entry_count;
 	mark_inode_dirty(dir_vi);
 	return 0;
@@ -869,7 +882,8 @@ int wtfs_delete_entry(struct inode * dir_vi, uint64_t inode_no)
 	struct wtfs_inode_info * dir_info = WTFS_INODE_INFO(dir_vi);
 	struct wtfs_data_block * block = NULL;
 	struct buffer_head * bh = NULL;
-	uint64_t i, next = dir_info->first_block;
+	uint64_t next = dir_info->first_block;
+	int i;
 	int ret = -EINVAL;
 
 	/* find the specified entry in existing entries */
@@ -881,12 +895,14 @@ int wtfs_delete_entry(struct inode * dir_vi, uint64_t inode_no)
 		block = (struct wtfs_data_block *)bh->b_data;
 		for (i = 0; i < WTFS_INODE_COUNT_PER_TABLE; ++i) {
 			if (block->entries[i].inode_no == inode_no) {
-				memset(&(block->entries[i]), 0, sizeof(struct wtfs_dentry));
+				memset(&(block->entries[i]), 0,
+					sizeof(struct wtfs_dentry));
 				mark_buffer_dirty(bh);
 				brelse(bh);
 
 				/* also, update parent dir's info */
-				dir_vi->i_ctime = dir_vi->i_mtime = CURRENT_TIME_SEC;
+				dir_vi->i_ctime = CURRENT_TIME_SEC;
+				dir_vi->i_mtime = CURRENT_TIME_SEC;
 				--dir_info->dir_entry_count;
 				mark_inode_dirty(dir_vi);
 				return 0;
@@ -936,7 +952,8 @@ void wtfs_delete_inode(struct inode * vi)
 		table = (struct wtfs_inode_table *)bh->b_data;
 		for (i = 0; i < WTFS_INODE_COUNT_PER_TABLE; ++i) {
 			if (table->inodes[i].inode_no == vi->i_ino) {
-				memset(&(table->inodes[i]), 0, sizeof(struct wtfs_inode));
+				memset(&(table->inodes[i]), 0,
+					sizeof(struct wtfs_inode));
 				mark_buffer_dirty(bh);
 				brelse(bh);
 				goto out;
