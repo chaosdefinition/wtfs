@@ -238,7 +238,7 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 			if ((blk_no = wtfs_alloc_block(vsb)) == 0) {
 				break;
 			}
-			bh2 = wtfs_init_block(vsb, blk_no, bh);
+			bh2 = wtfs_init_linked_block(vsb, blk_no, bh);
 			if (IS_ERR(bh2)) {
 				wtfs_free_block(vsb, blk_no);
 				break;

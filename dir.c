@@ -49,7 +49,7 @@ static int wtfs_iterate(struct file * file, struct dir_context * ctx)
 	struct inode * dir_vi = file_inode(file);
 	struct super_block * vsb = dir_vi->i_sb;
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(dir_vi);
-	struct wtfs_data_block * block = NULL;
+	struct wtfs_dir_block * block = NULL;
 	struct buffer_head * bh = NULL;
 	uint64_t count, offset, next, inode_no;
 	char * filename = NULL;
@@ -74,7 +74,7 @@ static int wtfs_iterate(struct file * file, struct dir_context * ctx)
 			wtfs_error("unable to read the block %llu\n", next);
 			goto error;
 		}
-		block = (struct wtfs_data_block *)bh->b_data;
+		block = (struct wtfs_dir_block *)bh->b_data;
 		for (k = 0; k < WTFS_DENTRY_COUNT_PER_BLOCK; ++k) {
 			inode_no = wtfs64_to_cpu(block->entries[k].inode_no);
 			filename = block->entries[k].filename;

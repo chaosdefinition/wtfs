@@ -68,9 +68,12 @@
  * -- bitmap information --
  * max blocks/inodes per bitmap:    4088 * 8
  *
- * -- data block information --
+ * -- directory block information --
  * size of each dentry:             64 bytes
  * max dentries per block:          63
+ *
+ * -- data block information --
+ * size of real data in each block: 4088 bytes
  */
 
 /*
@@ -97,11 +100,14 @@
 /* max length of symlink content in wtfs */
 #define WTFS_SYMLINK_MAX 4094
 
-/*
- * size of real data that each block can contain (except boot and super block)
- * we need the last 8 bytes as a pointer to another block
- */
-#define WTFS_DATA_SIZE (WTFS_BLOCK_SIZE - sizeof(wtfs64_t))
+/* size of data in a linked block */
+#define WTFS_LNKBLK_SIZE (WTFS_BLOCK_SIZE - sizeof(wtfs64_t))
+
+/* size of bitmap data in bytes */
+#define WTFS_BITMAP_SIZE WTFS_LNKBLK_SIZE
+
+/* size of real data that each data block can contain */
+#define WTFS_DATA_SIZE WTFS_LNKBLK_SIZE
 
 /* reserved block indices */
 #define WTFS_RB_BOOT            0 /* boot loader block */
@@ -160,10 +166,14 @@ struct wtfs_super_block
 	wtfs64_t inode_count;               /* 8 bytes */
 	wtfs64_t free_block_count;          /* 8 bytes */
 
-	wtfs8_t padding                     /* 4000 bytes */
-	[
-		WTFS_BLOCK_SIZE - sizeof(wtfs64_t) * 12
-	];
+	wtfs8_t padding[4000];              /* 4000 bytes */
+};
+
+/* model of linked block */
+struct wtfs_linked_block
+{
+	wtfs8_t data[WTFS_LNKBLK_SIZE];     /* 4088 bytes */
+	wtfs64_t next;                      /* 8 bytes */
 };
 
 /* structure for inode in disk */
@@ -190,12 +200,16 @@ struct wtfs_inode_table
 {
 	struct wtfs_inode inodes            /* 4032 bytes */
 	[
-		WTFS_DATA_SIZE / sizeof(struct wtfs_inode)
+		WTFS_INODE_COUNT_PER_TABLE
 	];
-	wtfs8_t padding                     /* 56 bytes */
-	[
-		WTFS_DATA_SIZE % sizeof(struct wtfs_inode)
-	];
+	wtfs8_t padding[56];                /* 56 bytes */
+	wtfs64_t next;                      /* 8 bytes */
+};
+
+/* structure for bitmap */
+struct wtfs_bitmap
+{
+	wtfs8_t data[WTFS_BITMAP_SIZE];     /* 4088 bytes */
 	wtfs64_t next;                      /* 8 bytes */
 };
 
@@ -206,22 +220,21 @@ struct wtfs_dentry
 	char filename[WTFS_FILENAME_MAX];   /* 56 bytes */
 };
 
-/* structure for data block and bitmap */
+/* structure for directory data block */
+struct wtfs_dir_block
+{
+	struct wtfs_dentry entries          /* 4032 bytes */
+	[
+		WTFS_DENTRY_COUNT_PER_BLOCK
+	];
+	wtfs8_t padding[56];                /* 56 bytes */
+	wtfs64_t next;                      /* 8 bytes */
+};
+
+/* structure for data block */
 struct wtfs_data_block
 {
-	union {                             /* 4088 bytes */
-		wtfs8_t data[WTFS_DATA_SIZE];
-		struct {
-			struct wtfs_dentry entries
-			[
-				WTFS_DATA_SIZE / sizeof(struct wtfs_dentry)
-			];
-			wtfs8_t padding
-			[
-				WTFS_DATA_SIZE % sizeof(struct wtfs_dentry)
-			];
-		};
-	};
+	wtfs8_t data[WTFS_DATA_SIZE];       /* 4088 bytes */
 	wtfs64_t next;                      /* 8 bytes */
 };
 
@@ -295,7 +308,7 @@ extern int wtfs_clear_bitmap_bit(struct super_block * vsb, uint64_t entry,
 	uint64_t count, uint64_t offset);
 extern int wtfs_test_bitmap_bit(struct super_block * vsb, uint64_t entry,
 	uint64_t count, uint64_t offset);
-extern struct buffer_head * wtfs_init_block(struct super_block * vsb,
+extern struct buffer_head * wtfs_init_linked_block(struct super_block * vsb,
 	uint64_t blk_no, struct buffer_head * prev);
 extern uint64_t wtfs_alloc_block(struct super_block * vsb);
 extern uint64_t wtfs_alloc_free_inode(struct super_block * vsb);

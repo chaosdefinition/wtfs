@@ -20,12 +20,13 @@
 
 CC := cc
 DEBUG_CFLAGS := -DDEBUG -g
+RELEASE_CFLAGS := -O2
 RM := rm -rf
 
 obj-m := wtfs.o
 wtfs-objs := super.o inode.o file.o dir.o helper.o
 
-all: programs module
+all: release
 
 programs: mkfs.wtfs statfs.wtfs
 
@@ -36,18 +37,25 @@ statfs.wtfs: statfs.wtfs.c
 	$(CC) $(CFLAGS) -o statfs.wtfs statfs.wtfs.c
 
 module:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+	make -C /lib/modules/$(KV)/build M=$(PWD) modules
 
 debug:
 	make programs CFLAGS="$(DEBUG_CFLAGS)"
-	make module CONFIG_DEBUG_INFO=1 KCFLAGS="$(DEBUG_CFLAGS)"
+	make module CONFIG_DEBUG_INFO=1 KCFLAGS="$(DEBUG_CFLAGS)" \
+		KV=$(shell uname -r)
 
-clean: clean_programs clean_module
+release:
+	make programs CFLAGS="$(RELEASE_CFLAGS)"
+	make module KCFLAGS="$(RELEASE_CFLAGS)" KV=$(shell uname -r)
+
+clean:
+	make clean_programs
+	make clean_module KV=$(shell uname -r)
 
 clean_programs:
 	$(RM) mkfs.wtfs statfs.wtfs
 
 clean_module:
-	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+	make -C /lib/modules/$(KV)/build M=$(PWD) clean
 
 .PHONY: mkfs.wtfs statfs.wtfs
