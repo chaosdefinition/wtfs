@@ -31,6 +31,7 @@
 #include <fcntl.h>
 #include <endian.h>
 #include <errno.h>
+#include <uuid/uuid.h>
 
 #include "wtfs.h"
 
@@ -38,10 +39,11 @@
 
 static int write_boot_block(int fd);
 static int write_super_block(int fd, uint64_t blocks, uint64_t inode_tables,
-	uint64_t blk_bitmaps, uint64_t inode_bitmaps);
+	uint64_t blk_bitmaps, uint64_t inode_bitmaps,
+	const char * label, uuid_t uuid);
 static int write_inode_table(int fd, uint64_t inode_tables);
 static int write_block_bitmap(int fd, uint64_t inode_tables,
-	uint64_t blk_bitmaps);
+	uint64_t blk_bitmaps, uint64_t inode_bitmaps);
 static int write_inode_bitmap(int fd, uint64_t inode_tables,
 	uint64_t blk_bitmaps, uint64_t inode_bitmaps);
 static int write_root_dir(int fd);
@@ -71,6 +73,12 @@ int main(int argc, char * const * argv)
 	/* inode bitmaps */
 	uint64_t inode_bitmaps;
 
+	/* filesystem label */
+	char * label = NULL;
+
+	/* filesystem UUID */
+	uuid_t uuid = { 0 };
+
 	char err_msg[BUF_SIZE], * tmp = NULL;
 
 	struct stat stat;
@@ -79,12 +87,14 @@ int main(int argc, char * const * argv)
 			     "Options:\n"
 			     "  -f                    quick format\n"
 			     "  -q                    quiet mode\n"
+			     "  -L <LABEL>            set filesystem label\n"
+			     "  -U <UUID>             set filesystem UUID\n"
 			     "  -V                    show version and exit\n"
 			     "  -h                    show this message and exit\n"
 			     "\n";
 
 	/* parse arguments */
-	while ((opt = getopt(argc, argv, "fqVh")) != -1) {
+	while ((opt = getopt(argc, argv, "fqL:U:Vh")) != -1) {
 		switch (opt) {
 		case 'f':
 			quick = 1;
@@ -92,6 +102,23 @@ int main(int argc, char * const * argv)
 
 		case 'q':
 			quiet = 1;
+			break;
+
+		case 'L':
+			label = optarg;
+			if (strnlen(label, WTFS_LABEL_MAX) == WTFS_LABEL_MAX) {
+				fprintf(stderr, "%s: label too long\n",
+					argv[0]);
+				goto error;
+			}
+			break;
+
+		case 'U':
+			if (uuid_parse(optarg, uuid) < 0) {
+				fprintf(stderr, "%s: invalid UUID '%s'\n",
+					argv[0], optarg);
+				goto error;
+			}
 			break;
 
 		case 'V':
@@ -104,6 +131,10 @@ int main(int argc, char * const * argv)
 		case 'h':
 			printf("%s", usage);
 			return 0;
+
+		case '?':
+			printf("%s", usage);
+			goto error;
 
 		default:
 			fprintf(stderr, "%s: illegal option -- %c\n",
@@ -162,9 +193,10 @@ int main(int argc, char * const * argv)
 
 	/* do calculation */
 	blocks = bytes / WTFS_BLOCK_SIZE;
-	inode_tables = WTFS_BITMAP_SIZE * 8 / WTFS_INODE_COUNT_PER_TABLE + 1;
-	blk_bitmaps = blocks / (WTFS_BITMAP_SIZE * 8);
 	inode_bitmaps = 1;
+	inode_tables = inode_bitmaps * WTFS_BITMAP_SIZE * 8 /
+		WTFS_INODE_COUNT_PER_TABLE + 1;
+	blk_bitmaps = blocks / (WTFS_BITMAP_SIZE * 8);
 	if (blocks < inode_tables + blk_bitmaps + inode_bitmaps + 3) {
 		snprintf(err_msg, BUF_SIZE, "%s: volume too small", argv[0]);
 		perror(err_msg);
@@ -180,7 +212,7 @@ int main(int argc, char * const * argv)
 		goto out;
 	}
 	if (write_super_block(fd, blocks, inode_tables, blk_bitmaps,
-			inode_bitmaps) < 0) {
+			inode_bitmaps, label, uuid) < 0) {
 		tmp = "super block";
 		goto out;
 	}
@@ -188,7 +220,8 @@ int main(int argc, char * const * argv)
 		tmp = "inode table";
 		goto out;
 	}
-	if (write_block_bitmap(fd, inode_tables, blk_bitmaps) < 0) {
+	if (write_block_bitmap(fd, inode_tables, blk_bitmaps,
+		inode_bitmaps) < 0) {
 		tmp = "block bitmap";
 		goto out;
 	}
@@ -237,7 +270,8 @@ static int write_boot_block(int fd)
 }
 
 static int write_super_block(int fd, uint64_t blocks, uint64_t inode_tables,
-	uint64_t blk_bitmaps, uint64_t inode_bitmaps)
+	uint64_t blk_bitmaps, uint64_t inode_bitmaps,
+	const char * label, uuid_t uuid)
 {
 	struct wtfs_super_block sb = {
 		.version = cpu_to_wtfs64(WTFS_VERSION),
@@ -254,6 +288,17 @@ static int write_super_block(int fd, uint64_t blocks, uint64_t inode_tables,
 		.free_block_count = cpu_to_wtfs64(blocks - inode_tables -
 			blk_bitmaps - inode_bitmaps - 3),
 	};
+
+	/* set label */
+	if (label != NULL) {
+		memcpy(sb.label, label, strlen(label));
+	}
+
+	/* set UUID */
+	if (uuid_is_null(uuid)) {
+		uuid_generate(uuid);
+	}
+	uuid_copy(sb.uuid, uuid);
 
 	lseek(fd, WTFS_RB_SUPER * WTFS_BLOCK_SIZE, SEEK_SET);
 	if (write(fd, &sb, sizeof(sb)) != sizeof(sb)) {
@@ -342,13 +387,15 @@ error:
  * we pre-build the whole block bitmap for the device
  */
 static int write_block_bitmap(int fd, uint64_t inode_tables,
-	uint64_t blk_bitmaps)
+	uint64_t blk_bitmaps, uint64_t inode_bitmaps)
 {
 	/* full bytes fill 0xff */
-	uint64_t full_bytes = (blk_bitmaps + inode_tables + 4) / 8;
+	uint64_t full_bytes = (blk_bitmaps + inode_tables + inode_bitmaps +
+		3) / 8;
 
 	/* half byte fill (1 << half_byte) - 1 */
-	uint64_t half_byte = (blk_bitmaps + inode_tables + 4) % 8;
+	uint64_t half_byte = (blk_bitmaps + inode_tables + inode_bitmaps +
+		3) % 8;
 
 	/* last full bitmap */
 	uint64_t full = full_bytes / WTFS_BITMAP_SIZE;

@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <endian.h>
 #include <errno.h>
+#include <uuid/uuid.h>
 
 #include "wtfs.h"
 
@@ -107,6 +108,7 @@ static int read_super_block(int fd)
 {
 	struct wtfs_super_block sb;
 	uint64_t version;
+	char uuid_buffer[36 + 1];
 
 	lseek(fd, WTFS_RB_SUPER * WTFS_BLOCK_SIZE, SEEK_SET);
 	if (read(fd, &sb, sizeof(sb)) != sizeof(sb)) {
@@ -145,6 +147,14 @@ static int read_super_block(int fd)
 		wtfs64_to_cpu(sb.inode_count));
 	printf("%-24s%llu\n", "free blocks:",
 		wtfs64_to_cpu(sb.free_block_count));
+	if (strnlen(sb.label, WTFS_LABEL_MAX) != 0) {
+		printf("%-24s%s\n", "label:", sb.label);
+	}
+	if (!uuid_is_null(sb.uuid)) {
+		uuid_unparse(sb.uuid, uuid_buffer);
+		uuid_buffer[36] = '\0';
+		printf("%-24s%s\n", "UUID:", uuid_buffer);
+	}
 	printf("\n");
 
 	return 0;

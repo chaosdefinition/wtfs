@@ -31,10 +31,10 @@ all: release
 programs: mkfs.wtfs statfs.wtfs
 
 mkfs.wtfs: mkfs.wtfs.c
-	$(CC) $(CFLAGS) -o mkfs.wtfs mkfs.wtfs.c
+	$(CC) $(CFLAGS) -o mkfs.wtfs mkfs.wtfs.c -luuid
 
 statfs.wtfs: statfs.wtfs.c
-	$(CC) $(CFLAGS) -o statfs.wtfs statfs.wtfs.c
+	$(CC) $(CFLAGS) -o statfs.wtfs statfs.wtfs.c -luuid
 
 module:
 	make -C /lib/modules/$(KV)/build M=$(PWD) modules

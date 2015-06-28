@@ -100,6 +100,9 @@
 /* max length of symlink content in wtfs */
 #define WTFS_SYMLINK_MAX 4094
 
+/* max length of filesystem label in wtfs */
+#define WTFS_LABEL_MAX 32
+
 /* size of data in a linked block */
 #define WTFS_LNKBLK_SIZE (WTFS_BLOCK_SIZE - sizeof(wtfs64_t))
 
@@ -166,7 +169,10 @@ struct wtfs_super_block
 	wtfs64_t inode_count;               /* 8 bytes */
 	wtfs64_t free_block_count;          /* 8 bytes */
 
-	wtfs8_t padding[4000];              /* 4000 bytes */
+	char label[WTFS_LABEL_MAX];         /* 32 bytes */
+	unsigned char uuid[16];             /* 16 bytes */
+
+	wtfs8_t padding[3952];              /* 3952 bytes */
 };
 
 /* model of linked block */
