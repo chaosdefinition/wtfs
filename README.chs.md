@@ -7,12 +7,12 @@
 在 [GPLv3](https://github.com/chaosdefinition/wtfs/blob/master/LICENSE.txt) 的许可下发布
 
 ## 如何使用
-在编译之前，你需要安装好构建要素和适当版本的 Linux 内核头文件，以便能够构建内核模块。
+在编译之前，你需要安装好构建要素和适当版本的 Linux 内核头文件，以便能够构建内核模块。另外，构建 `mkfs.wtfs` 和 `statfs.wtfs` 现在需要 uuid 头文件了。
 ```Shell
 # for Debian derivatives
-$ sudo apt-get install build-essential linux-headers-`uname -r`
+$ sudo apt-get install build-essential linux-headers-`uname -r` uuid-dev
 # for Redhat derivatives
-$ sudo yum groupinstall "Development Tools" kernel-devel kernel-headers
+$ sudo yum groupinstall "Development Tools" kernel-devel kernel-headers libuuid-devel
 ```
 
 首先编译整个项目，并将生成的模块加载至内核。
@@ -47,7 +47,7 @@ $ sudo rmmod wtfs
 ```
 
 ## wtfs 物理磁盘布局
-版本 0.2.0
+版本 0.3.0
 
 0 号块 | 1 号块 | 2 号块 | 3 号块 | 4 号块 | 5 号块… |
 ------ | ------ | ------ | ------ | ------ | ------- |

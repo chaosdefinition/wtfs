@@ -10,12 +10,13 @@ Licensed under [GPLv3](https://github.com/chaosdefinition/wtfs/blob/master/LICEN
 
 ## How to use it
 Before compiling, you need to install build essentials and Linux kernel header
- files of proper version to enable kernel module building.
+ files of proper version to enable kernel module building. In addition, uuid
+ header file is required to build `mkfs.wtfs` and `statfs.wtfs` now.
 ```Shell
 # for Debian derivatives
-$ sudo apt-get install build-essential linux-headers-`uname -r`
+$ sudo apt-get install build-essential linux-headers-`uname -r` uuid-dev
 # for Redhat derivatives
-$ sudo yum groupinstall "Development Tools" kernel-devel kernel-headers
+$ sudo yum groupinstall "Development Tools" kernel-devel kernel-headers libuuid-devel
 ```
 
 First compile the whole project and load the module into kernel.
@@ -55,7 +56,7 @@ $ sudo rmmod wtfs
 ```
 
 ## Physical disk layout of wtfs
-Version 0.2.0
+Version 0.3.0
 
 Block 0 | Block 1 | Block 2 | Block 3 | Block 4 | Block 5... |
 ------- | ------- | ------- | ------- | ------- | ---------- |
