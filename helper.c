@@ -426,7 +426,7 @@ uint64_t wtfs_alloc_block(struct super_block * vsb)
  */
 static uint64_t __wtfs_alloc_obj(struct super_block * vsb, uint64_t entry)
 {
-	struct wtfs_bitmap * bitmap = NULL;
+	struct wtfs_bitmap_block * bitmap = NULL;
 	struct buffer_head * bh = NULL;
 	uint64_t next, i, j;
 
@@ -438,7 +438,7 @@ static uint64_t __wtfs_alloc_obj(struct super_block * vsb, uint64_t entry)
 			wtfs_error("unable to read the bitmap %llu\n", next);
 			goto error;
 		}
-		bitmap = (struct wtfs_bitmap *)bh->b_data;
+		bitmap = (struct wtfs_bitmap_block *)bh->b_data;
 
 		wtfs_debug("finding first zero bit in bitmap %llu\n", next);
 		j = wtfs_find_first_zero_bit(bitmap->data, WTFS_BITMAP_SIZE * 8);

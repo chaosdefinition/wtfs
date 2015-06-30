@@ -187,7 +187,7 @@ static int read_inode_table(int fd)
 
 static int read_block_bitmap(int fd)
 {
-	struct wtfs_bitmap bitmap;
+	struct wtfs_bitmap_block bitmap;
 	uint64_t next = WTFS_RB_BLOCK_BITMAP;
 	int i = 0;
 
@@ -211,7 +211,7 @@ static int read_block_bitmap(int fd)
 
 static int read_inode_bitmap(int fd)
 {
-	struct wtfs_bitmap bitmap;
+	struct wtfs_bitmap_block bitmap;
 	int i;
 
 	lseek(fd, WTFS_RB_INODE_BITMAP * WTFS_BLOCK_SIZE, SEEK_SET);

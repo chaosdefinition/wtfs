@@ -22,12 +22,14 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
+#include <getopt.h>
 #include <fcntl.h>
 #include <endian.h>
 #include <errno.h>
@@ -198,8 +200,7 @@ int main(int argc, char * const * argv)
 		WTFS_INODE_COUNT_PER_TABLE + 1;
 	blk_bitmaps = blocks / (WTFS_BITMAP_SIZE * 8);
 	if (blocks < inode_tables + blk_bitmaps + inode_bitmaps + 3) {
-		snprintf(err_msg, BUF_SIZE, "%s: volume too small", argv[0]);
-		perror(err_msg);
+		fprintf(stderr, "%s: volume too small\n", argv[0]);
 		goto error;
 	}
 	if (blocks % (WTFS_BITMAP_SIZE * 8) != 0) {
@@ -406,7 +407,7 @@ static int write_block_bitmap(int fd, uint64_t inode_tables,
 	/* block number index array */
 	uint64_t * index;
 	uint64_t i, j;
-	struct wtfs_bitmap bitmap;
+	struct wtfs_bitmap_block bitmap;
 	int ret = -EINVAL;
 
 	/* construct index */
@@ -469,7 +470,7 @@ error:
 static int write_inode_bitmap(int fd, uint64_t inode_tables,
 	uint64_t blk_bitmaps, uint64_t inode_bitmaps)
 {
-	struct wtfs_bitmap bitmap = {
+	struct wtfs_bitmap_block bitmap = {
 		.data = { 0x03 },
 	};
 

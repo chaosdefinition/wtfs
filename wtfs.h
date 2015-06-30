@@ -126,7 +126,7 @@
 #define WTFS_ROOT_INO 1
 
 /* max inode number */
-#define WTFS_INODE_MAX (WTFS_DATA_SIZE * 8)
+#define WTFS_INODE_MAX (WTFS_BITMAP_SIZE * 8)
 
 /* DEBUG macro for wtfs */
 #ifdef DEBUG
@@ -212,8 +212,8 @@ struct wtfs_inode_table
 	wtfs64_t next;                      /* 8 bytes */
 };
 
-/* structure for bitmap */
-struct wtfs_bitmap
+/* structure for bitmap block */
+struct wtfs_bitmap_block
 {
 	wtfs8_t data[WTFS_BITMAP_SIZE];     /* 4088 bytes */
 	wtfs64_t next;                      /* 8 bytes */
