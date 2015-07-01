@@ -35,6 +35,7 @@
  * we may evolve several versions of it
  */
 #define WTFS_VERSION 0x0003 /* 0.3.0 */
+#define WTFS_VERSION_STR "0.3.0"
 
 /* version control */
 #define WTFS_VERSION_MAJOR(v) ((v) >> 8)
@@ -322,7 +323,7 @@ extern struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode,
 	const char * path, size_t length);
 extern void wtfs_free_block(struct super_block * vsb, uint64_t blk_no);
 extern void wtfs_free_inode(struct super_block * vsb, uint64_t inode_no);
-extern int wtfs_sync_super(struct super_block * vsb);
+extern int wtfs_sync_super(struct super_block * vsb, int wait);
 extern uint64_t wtfs_find_inode(struct inode * dir_vi, struct dentry * dentry);
 extern int wtfs_add_entry(struct inode * dir_vi, uint64_t inode_no,
 	const char * filename, size_t length);

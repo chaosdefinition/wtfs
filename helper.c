@@ -409,7 +409,7 @@ uint64_t wtfs_alloc_block(struct super_block * vsb)
 	blk_no = __wtfs_alloc_obj(vsb, sbi->block_bitmap_first);
 	if (blk_no != 0) {
 		--sbi->free_block_count;
-		wtfs_sync_super(vsb);
+		wtfs_sync_super(vsb, 0);
 
 		wtfs_debug("free blocks: %llu\n", sbi->free_block_count);
 	}
@@ -488,7 +488,7 @@ uint64_t wtfs_alloc_free_inode(struct super_block * vsb)
 	inode_no = __wtfs_alloc_obj(vsb, sbi->inode_bitmap_first);
 	if (inode_no != 0) {
 		++sbi->inode_count;
-		wtfs_sync_super(vsb);
+		wtfs_sync_super(vsb, 0);
 
 		wtfs_debug("inodes: %llu\n", sbi->inode_count);
 	}
@@ -617,7 +617,7 @@ void wtfs_free_block(struct super_block * vsb, uint64_t blk_no)
 	if (sbi->free_block_count < sbi->block_count) {
 		__wtfs_free_obj(vsb, sbi->block_bitmap_first, blk_no);
 		++sbi->free_block_count; /* increase free block counter */
-		wtfs_sync_super(vsb);
+		wtfs_sync_super(vsb, 0);
 
 		wtfs_debug("free blocks: %llu\n", sbi->free_block_count);
 	}
@@ -655,7 +655,7 @@ void wtfs_free_inode(struct super_block * vsb, uint64_t inode_no)
 	if (inode_no != 0 && inode_no != WTFS_ROOT_INO) {
 		__wtfs_free_obj(vsb, sbi->inode_bitmap_first, inode_no);
 		--sbi->inode_count; /* decrease inode counter */
-		wtfs_sync_super(vsb);
+		wtfs_sync_super(vsb, 0);
 
 		wtfs_debug("inodes: %llu\n", sbi->inode_count);
 	}
@@ -667,10 +667,11 @@ void wtfs_free_inode(struct super_block * vsb, uint64_t inode_no)
  * write back super block information to disk
  *
  * @vsb: the VFS super block structure
+ * @wait: whether to wait for the super block to be synced to disk
  *
  * return: 0 on success, error code otherwise
  */
-int wtfs_sync_super(struct super_block * vsb)
+int wtfs_sync_super(struct super_block * vsb, int wait)
 {
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	struct wtfs_super_block * sb = NULL;
@@ -695,7 +696,16 @@ int wtfs_sync_super(struct super_block * vsb)
 	sb->inode_bitmap_count = cpu_to_wtfs64(sbi->inode_bitmap_count);
 	sb->inode_count = cpu_to_wtfs64(sbi->inode_count);
 	sb->free_block_count = cpu_to_wtfs64(sbi->free_block_count);
+
 	mark_buffer_dirty(bh);
+	if (wait) {
+		sync_dirty_buffer(bh);
+		if (buffer_req(bh) && !buffer_uptodate(bh)) {
+			wtfs_error("super block sync failed\n");
+			ret = -EIO;
+			goto error;
+		}
+	}
 	brelse(bh);
 
 	return 0;

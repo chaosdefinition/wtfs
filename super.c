@@ -34,7 +34,7 @@
 MODULE_ALIAS_FS("wtfs");
 MODULE_AUTHOR("Chaos Shen");
 MODULE_DESCRIPTION("What the fxck filesystem");
-MODULE_VERSION(__stringify(WTFS_VERSION));
+MODULE_VERSION(WTFS_VERSION_STR);
 MODULE_LICENSE("GPL");
 
 /* declaration of module entry & exit points */
@@ -65,6 +65,7 @@ static int wtfs_write_inode(struct inode * vi,
 	struct writeback_control * wbc);
 static void wtfs_evict_inode(struct inode * vi);
 static void wtfs_put_super(struct super_block * vsb);
+static int wtfs_sync_fs(struct super_block * vsb, int wait);
 static int wtfs_statfs(struct dentry * dentry, struct kstatfs * buf);
 
 const struct super_operations wtfs_super_ops = {
@@ -73,6 +74,7 @@ const struct super_operations wtfs_super_ops = {
 	.write_inode = wtfs_write_inode,
 	.evict_inode = wtfs_evict_inode,
 	.put_super = wtfs_put_super,
+	.sync_fs = wtfs_sync_fs,
 	.statfs = wtfs_statfs,
 };
 
@@ -190,7 +192,7 @@ static int wtfs_write_inode(struct inode * vi, struct writeback_control * wbc)
 	if (wbc->sync_mode == WB_SYNC_ALL) {
 		sync_dirty_buffer(bh);
 		if (buffer_req(bh) && !buffer_uptodate(bh)) {
-			wtfs_error("inode %lu sync failed at %s", vi->i_ino,
+			wtfs_error("inode %lu sync failed at %s\n", vi->i_ino,
 				vi->i_sb->s_id);
 			ret = -EIO;
 			goto error;
@@ -227,7 +229,7 @@ static void wtfs_evict_inode(struct inode * vi)
 /********************* implementation of put_super ****************************/
 
 /*
- * routine called when the VFS wishes to free the superblock
+ * routine called when the VFS wishes to free the super block
  *
  * @vsb: the VFS super block structure
  */
@@ -241,6 +243,24 @@ static void wtfs_put_super(struct super_block * vsb)
 		kfree(sbi);
 		vsb->s_fs_info = NULL;
 	}
+}
+
+/********************* implementation of sync_fs ******************************/
+
+/*
+ * routine called when the VFS is writing out all dirty data associated with
+ * the super block
+ *
+ * @vsb: the VFS super block structure
+ * @wait: whether to wait for the super block to be synced to disk
+ *
+ * return: 0 on success, error code otherwise
+ */
+static int wtfs_sync_fs(struct super_block * vsb, int wait)
+{
+	wtfs_debug("sync_fs called\n");
+
+	return wtfs_sync_super(vsb, wait);
 }
 
 /********************* implementation of statfs *******************************/
