@@ -48,9 +48,11 @@ const struct file_operations wtfs_file_ops = {
 /* structure to store I/O position */
 struct wtfs_file_pos
 {
+	/* current read/write position */
 	uint64_t pos;
+
+	/* block available to read/write */
 	uint64_t blk_no;
-	uint64_t new_blk_flag;
 };
 
 /********************* implementation of read *********************************/
@@ -75,13 +77,13 @@ static ssize_t wtfs_read(struct file * file, char __user * buf, size_t length,
 	struct wtfs_data_block * block = NULL;
 	struct buffer_head * bh = NULL;
 	uint64_t i, count, offset, remain, next;
-	ssize_t ret = -EINVAL, nbytes;
+	ssize_t ret = -EIO, nbytes;
 
 	wtfs_debug("read called, inode %lu, length %lu, pos %llu\n",
 		vi->i_ino, length, *ppos);
 
 	/* check if we reach the EOF */
-	if (*ppos >= vi->i_size) {
+	if (*ppos >= i_size_read(vi)) {
 		return 0;
 	}
 
@@ -112,7 +114,7 @@ static ssize_t wtfs_read(struct file * file, char __user * buf, size_t length,
 
 	/* start reading */
 	ret = 0;
-	remain = vi->i_size - count * WTFS_DATA_SIZE - offset;
+	remain = i_size_read(vi) - count * WTFS_DATA_SIZE - offset;
 	while (remain > 0 && length > 0 && next != 0) {
 		if ((bh = sb_bread(vsb, next)) == NULL) {
 			wtfs_error("unable to read the block %llu\n", next);
@@ -180,8 +182,7 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 	struct wtfs_data_block * block = NULL;
 	struct buffer_head * bh = NULL, * bh2 = NULL;
 	uint64_t i, count, offset, next;
-	uint64_t blk_no;
-	ssize_t ret = -EINVAL, nbytes;
+	ssize_t ret = -EIO, nbytes;
 
 	wtfs_debug("write called, inode %lu, buf_size %lu, pos %llu\n",
 		vi->i_ino, length, *ppos);
@@ -196,14 +197,6 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 		 * use the last block number directly
 		 */
 		next = file_pos->blk_no;
-		if ((bh = sb_bread(vsb, next)) == NULL) {
-			wtfs_error("unable to read the block %llu\n", next);
-			goto error;
-		}
-		if (file_pos->new_blk_flag) {
-			block = (struct wtfs_data_block *)bh->b_data;
-			next = wtfs64_to_cpu(block->next);
-		}
 	} else {
 		/* skip the first count-th blocks from beginning */
 		next = info->first_block;
@@ -215,10 +208,6 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 			}
 			block = (struct wtfs_data_block *)bh->b_data;
 			next = wtfs64_to_cpu(block->next);
-			/* do not release the last block */
-			if (next == 0 || i == count) {
-				break;
-			}
 			brelse(bh);
 		}
 	}
@@ -226,30 +215,10 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 	/* start writing */
 	ret = 0;
 	while (length > 0) {
-		if (next != 0) {
-			brelse(bh);
-			if ((bh = sb_bread(vsb, next)) == NULL) {
-				wtfs_error("unable to read the block %llu\n",
-					next);
-				break;
-			}
-		} else {
-			/* alloc a new data block */
-			if ((blk_no = wtfs_alloc_block(vsb)) == 0) {
-				break;
-			}
-			bh2 = wtfs_init_linked_block(vsb, blk_no, bh);
-			if (IS_ERR(bh2)) {
-				wtfs_free_block(vsb, blk_no);
-				break;
-			}
-			brelse(bh);
-			bh = bh2;
-			next = blk_no;
-			++vi->i_blocks;
-			mark_inode_dirty(vi);
+		if ((bh = sb_bread(vsb, next)) == NULL) {
+			wtfs_error("unable to read the block %llu\n", next);
+			break;
 		}
-
 		block = (struct wtfs_data_block *)bh->b_data;
 
 		/* max bytes we can write to this block */
@@ -257,13 +226,35 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 		copy_from_user(block->data + offset, buf + ret, nbytes);
 		mark_buffer_dirty(bh);
 
-		/* record block number and flag */
+		/* record block number */
 		if (nbytes == WTFS_DATA_SIZE - offset) {
-			file_pos->new_blk_flag = 1;
+			file_pos->blk_no = wtfs64_to_cpu(block->next);
+			/*
+			 * if we reach the last block, pre-allocate a new data
+			 * block
+			 */
+			if (file_pos->blk_no == 0) {
+				if ((file_pos->blk_no = wtfs_alloc_block(vsb))
+					== 0) {
+					/*
+					 * here failure is not allowed, neither
+					 * in the following
+					 */
+					goto error;
+				}
+				bh2 = wtfs_init_linked_block(vsb,
+					file_pos->blk_no, bh);
+				if (IS_ERR(bh2)) {
+					wtfs_free_block(vsb, file_pos->blk_no);
+					goto error;
+				}
+				brelse(bh2);
+				++vi->i_blocks;
+				mark_inode_dirty(vi);
+			}
 		} else {
-			file_pos->new_blk_flag = 0;
+			file_pos->blk_no = next;
 		}
-		file_pos->blk_no = next;
 
 		/* update bytes write */
 		ret += nbytes;
@@ -271,9 +262,6 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 		offset = 0;
 
 		next = wtfs64_to_cpu(block->next);
-	}
-	/* release the last buffer here */
-	if (bh != NULL) {
 		brelse(bh);
 	}
 
@@ -308,11 +296,135 @@ error:
  * @whence: the current position to start seeking, can be SEEK_SET, SEEK_CUR or
  *          SEEK_END
  *
- * return: the offset from the beginning of the file after seeking or error code
+ * return: the offset from the beginning of the file after seeking on success,
+ *         error code otherwise
  */
 static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence)
 {
-	return -EINVAL;
+	struct inode * vi = file->f_inode;
+	struct super_block * vsb = vi->i_sb;
+	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
+	struct wtfs_file_pos * file_pos = file->private_data;
+	struct buffer_head * bh = NULL;
+	uint64_t file_size = i_size_read(vi);
+	uint64_t seek_pos;
+	uint64_t count, count2;
+	uint64_t blk_no;
+	int ret = -EINVAL;
+
+	wtfs_debug("llseek called, inode %lu, current pos %llu, start pos %d, "
+		"offset %llu\n", vi->i_ino, file->f_pos, whence, offset);
+
+	/*
+	 * in llseek, we update not only file position pointer, but also blk_no
+	 * field in struct wtfs_file_pos
+	 */
+	switch (whence) {
+	case SEEK_SET:
+		/* check if exceeding the file size */
+		if (offset < 0 || offset > file_size) {
+			goto error;
+		}
+
+		/* get block number of the count-th block */
+		count = offset / WTFS_DATA_SIZE;
+		bh = wtfs_get_linked_block(vsb, info->first_block, count,
+			&blk_no);
+		if (IS_ERR(bh)) {
+			ret = -EIO;
+			goto error;
+		}
+		brelse(bh);
+
+		file->f_pos = file_pos->pos = offset;
+		file_pos->blk_no = blk_no; /* update block number */
+
+		wtfs_debug("seek to %llu-th block %llu\n", count, blk_no);
+
+		return file->f_pos;
+
+	case SEEK_CUR:
+		/* check if exceeding the file size */
+		seek_pos = file->f_pos + offset;
+		if (seek_pos < 0 || seek_pos > file_size) {
+			goto error;
+		}
+
+		count = seek_pos / WTFS_DATA_SIZE;
+		count2 = file->f_pos / WTFS_DATA_SIZE;
+		if (count == count2) {
+			/*
+			 * current position and seeking position are in the
+			 * same block
+			 */
+			file->f_pos = file_pos->pos = seek_pos;
+
+			wtfs_debug("seek to %llu-th block %llu\n",
+				count, file_pos->blk_no);
+
+			return file->f_pos;
+		} else if (count > count2) {
+			/*
+			 * current position and seeking position are not in the
+			 * same block, and the seeking position is ahead of the
+			 * current, so we do seeking by starting reading the
+			 * link from the current block
+			 */
+			bh = wtfs_get_linked_block(vsb, file_pos->blk_no,
+				count - count2, &blk_no);
+			if (IS_ERR(bh)) {
+				ret = -EIO;
+				goto error;
+			}
+			brelse(bh);
+
+			file->f_pos = file_pos->pos = seek_pos;
+			file_pos->blk_no = blk_no; /* update block number */
+
+			wtfs_debug("seek to %llu-th block %llu\n",
+				count, blk_no);
+
+			return file->f_pos;
+		}
+		/*
+		 * in other cases, we have no efficient way to do seeking from
+		 * the current position, so just seek from the beginning
+		 */
+		return wtfs_llseek(file, file->f_pos + offset, SEEK_SET);
+
+	case SEEK_END:
+		/* check if exceeding the file size */
+		seek_pos = file_size + offset;
+		if (offset > 0 || seek_pos < 0) {
+			goto error;
+		}
+
+		count = seek_pos / WTFS_DATA_SIZE;
+		count2 = file->f_pos / WTFS_DATA_SIZE;
+		if (count == count2) {
+			/*
+			 * current position and seeking position are in the
+			 * same block
+			 *
+			 * this is the only special case we can fast deal with
+			 * in a single-chained file
+			 */
+			file->f_pos = file_pos->pos = seek_pos;
+
+			wtfs_debug("seek to %llu-th block %llu\n",
+				count, file_pos->blk_no);
+
+			return file->f_pos;
+		}
+		/*
+		 * in other cases, we have no efficient way to do seeking from
+		 * the EOF, so just seek from the beginning
+		 */
+		return wtfs_llseek(file, file_size + offset, SEEK_SET);
+	}
+
+error:
+	return ret;
 }
 
 /********************* implementation of open *********************************/
@@ -327,6 +439,7 @@ static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence)
  */
 static int wtfs_open(struct inode * vi, struct file * file)
 {
+	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
 	struct wtfs_file_pos * data = NULL;
 	int ret = -EINVAL;
 
@@ -342,6 +455,7 @@ static int wtfs_open(struct inode * vi, struct file * file)
 		}
 
 		/* set private_data */
+		data->blk_no = info->first_block;
 		file->private_data = data;
 		return 0;
 	}
@@ -368,5 +482,8 @@ static int wtfs_release(struct inode * vi, struct file * file)
 		/* release the memory we alloc at the open call */
 		kfree(file->private_data);
 	}
+
+	/* TODO: do shrink here */
+
 	return 0;
 }

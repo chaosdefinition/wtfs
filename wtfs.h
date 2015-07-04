@@ -308,7 +308,7 @@ extern struct wtfs_inode * wtfs_get_inode(struct super_block * vsb,
 	uint64_t inode_no, struct buffer_head ** pbh);
 extern int is_ino_valid(struct super_block * vsb, uint64_t inode_no);
 extern struct buffer_head * wtfs_get_linked_block(struct super_block * vsb,
-	uint64_t start, uint64_t count);
+	uint64_t start, uint64_t count, uint64_t * blk_no);
 extern int wtfs_set_bitmap_bit(struct super_block * vsb, uint64_t entry,
 	uint64_t count, uint64_t offset);
 extern int wtfs_clear_bitmap_bit(struct super_block * vsb, uint64_t entry,
