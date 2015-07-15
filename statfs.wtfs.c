@@ -1,7 +1,7 @@
 /*
  * statfs.wtfs.c - statfs for wtfs.
  *
- * Copyright (c) 2015 Chaos Shen
+ * Copyright (C) 2015 Chaos Shen
  *
  * This file is part of wtfs, What the fxck filesystem.  You may take
  * the letter 'f' from, at your option, either 'fxck' or 'filesystem'.
@@ -162,69 +162,19 @@ static int read_super_block(int fd)
 
 static int read_inode_table(int fd)
 {
-	struct wtfs_inode_table inode_table;
-	uint64_t next = WTFS_RB_INODE_TABLE;
-	int i = 0;
-
-	while (next != 0) {
-		lseek(fd, next * WTFS_BLOCK_SIZE, SEEK_SET);
-		if (read(fd, &inode_table, sizeof(inode_table)) !=
-			sizeof(inode_table)) {
-			return -EIO;
-		}
-
-		if (next == WTFS_RB_INODE_TABLE) {
-			printf("inode table\n%lu", next);
-		} else {
-			printf("->%lu", next);
-		}
-		next = wtfs64_to_cpu(inode_table.next);
-		++i;
-	}
-	printf("\ntotal %d tables\n\n", i);
+	/* do nothing */
 	return 0;
 }
 
 static int read_block_bitmap(int fd)
 {
-	struct wtfs_bitmap_block bitmap;
-	uint64_t next = WTFS_RB_BLOCK_BITMAP;
-	int i = 0;
-
-	while (next != 0) {
-		lseek(fd, next * WTFS_BLOCK_SIZE, SEEK_SET);
-		if (read(fd, &bitmap, sizeof(bitmap)) != sizeof(bitmap)) {
-			return -EIO;
-		}
-
-		if (next == WTFS_RB_BLOCK_BITMAP) {
-			printf("block bitmap\n%lu", next);
-		} else {
-			printf("->%lu", next);
-		}
-		next = wtfs64_to_cpu(bitmap.next);
-		++i;
-	}
-	printf("\ntotal %d bitmaps\n\n", i);
+	/* do nothing */
 	return 0;
 }
 
 static int read_inode_bitmap(int fd)
 {
-	struct wtfs_bitmap_block bitmap;
-	int i;
-
-	lseek(fd, WTFS_RB_INODE_BITMAP * WTFS_BLOCK_SIZE, SEEK_SET);
-	if (read(fd, &bitmap, sizeof(bitmap)) != sizeof(bitmap)) {
-		return -EIO;
-	}
-
-	printf("inode bitmap\n");
-	for (i = 0; i < WTFS_BITMAP_SIZE; ++i) {
-		printf("%02x", bitmap.data[i]);
-	}
-	printf("\n\n");
-
+	/* do nothing */
 	return 0;
 }
 

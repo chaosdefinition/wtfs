@@ -1,7 +1,7 @@
 /*
  * helper.c - implementation of some helper functions.
  *
- * Copyright (c) 2015 Chaos Shen
+ * Copyright (C) 2015 Chaos Shen
  *
  * This file is part of wtfs, What the fxck filesystem.  You may take
  * the letter 'f' from, at your option, either 'fxck' or 'filesystem'.
@@ -76,7 +76,6 @@ struct inode * wtfs_iget(struct super_block * vsb, uint64_t inode_no)
 		ret = PTR_ERR(inode);
 		goto error;
 	}
-
 
 	/* now let's fill the VFS inode */
 	vi->i_ino = (unsigned long)wtfs64_to_cpu(inode->inode_no);
@@ -193,13 +192,13 @@ error:
 int is_ino_valid(struct super_block * vsb, uint64_t inode_no)
 {
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
-	uint64_t block, offset;
+	uint64_t count, offset;
 
 	/* calculate the index of inode bitmap and the offset */
-	block = inode_no / (WTFS_BITMAP_SIZE * 8);
+	count = inode_no / (WTFS_BITMAP_SIZE * 8);
 	offset = inode_no % (WTFS_BITMAP_SIZE * 8);
 
-	return wtfs_test_bitmap_bit(vsb, sbi->inode_bitmap_first, block,
+	return wtfs_test_bitmap_bit(vsb, sbi->inode_bitmap_first, count,
 		offset);
 }
 

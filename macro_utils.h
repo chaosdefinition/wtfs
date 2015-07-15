@@ -1,7 +1,7 @@
 /*
  * macro_utils.h - define some useful macros.
  *
- * Copyright (c) 2015 Chaos Shen
+ * Copyright (C) 2015 Chaos Shen
  *
  * This file is part of wtfs, What the fxck filesystem.  You may take
  * the letter 'f' from, at your option, either 'fxck' or 'filesystem'.
