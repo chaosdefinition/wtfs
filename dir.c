@@ -42,7 +42,7 @@ const struct file_operations wtfs_dir_ops = {
  * @file: the VFS file structure of the directory
  * @ctx: directory context
  *
- * return: 0 or error
+ * return: 0 on success, error code otherwise
  */
 static int wtfs_iterate(struct file * file, struct dir_context * ctx)
 {

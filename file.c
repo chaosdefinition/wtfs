@@ -65,7 +65,7 @@ struct wtfs_file_pos
  * @length: length of the buffer in byte
  * @ppos: current position to read
  *
- * return: size of content actually read or error code
+ * return: size of content actually read on success, error code otherwise
  */
 static ssize_t wtfs_read(struct file * file, char __user * buf, size_t length,
 	loff_t * ppos)
@@ -170,7 +170,7 @@ error:
  * @length: length of the content
  * @ppos: current position to write
  *
- * return: size of content actually written or error code
+ * return: size of content actually written on success, error code otherwise
  */
 static ssize_t wtfs_write(struct file * file, const char __user * buf,
 	size_t length, loff_t * ppos)
@@ -476,6 +476,14 @@ error:
  */
 static int wtfs_release(struct inode * vi, struct file * file)
 {
+	struct super_block * vsb = vi->i_sb;
+	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
+	struct buffer_head * bh = NULL;
+	struct wtfs_data_block * blk = NULL;
+	uint64_t min_blocks = i_size_read(vi) / WTFS_DATA_SIZE + 1;
+	uint64_t next;
+	uint64_t i;
+
 	wtfs_debug("release called, inode %lu\n", vi->i_ino);
 
 	if (file->private_data != NULL) {
@@ -483,7 +491,58 @@ static int wtfs_release(struct inode * vi, struct file * file)
 		kfree(file->private_data);
 	}
 
-	/* TODO: do shrink here */
+	/* do shrink on files that hold one or more idle blocks */
+	if (min_blocks < vi->i_blocks) {
+		/* skip active blocks */
+		i = 0;
+		next = info->first_block;
+		while (next != 0) {
+			if ((bh = sb_bread(vsb, next)) == NULL) {
+				wtfs_error("unable to read the block %llu\n",
+					next);
+				goto error;
+			}
+			blk = (struct wtfs_data_block *)bh->b_data;
 
+			next = wtfs64_to_cpu(blk->next);
+			/* set the pointer of the last active block to 0 */
+			if ((++i) == min_blocks) {
+				blk->next = 0;
+				mark_buffer_dirty(bh);
+				brelse(bh);
+				break;
+			}
+			brelse(bh);
+		}
+
+		if (i < min_blocks || next == 0) {
+			wtfs_error("something strang happened on inode %lu\n",
+				vi->i_ino);
+			goto error;
+		}
+
+		/* recycle remaining idle blocks */
+		while (i < vi->i_blocks && next != 0) {
+			if ((bh = sb_bread(vsb, next)) == NULL) {
+				wtfs_error("unable to read the block %llu\n",
+					next);
+				goto error;
+			}
+			blk = (struct wtfs_data_block *)bh->b_data;
+
+			wtfs_free_block(vsb, next);
+			next = wtfs64_to_cpu(blk->next);
+			++i;
+			brelse(bh);
+		}
+
+		vi->i_blocks = min_blocks;
+		mark_inode_dirty(vi);
+	}
+
+	return 0;
+
+error:
+	wtfs_error("failed to do shrink on inode %lu\n", vi->i_ino);
 	return 0;
 }

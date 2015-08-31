@@ -37,14 +37,14 @@ $ mkdir ~/wtfs-test
 $ sudo ./mkfs.wtfs -f /dev/sda
 $ sudo mount /dev/sda ~/wtfs-test
 ```
-或者你也可以使用一个回环设备，将一个常规文件当做块设备来访问，但**并不推荐**这么做（因为对回环设备调用 `mark_buffer_dirty` 可能会阻塞，导致写操作相当慢）。创建一个 4GB 大小的常规文件（任意大小都可以，但不要太小，这里就叫 `wtfs.data`），执行格式化操作并挂载。
+或者你也可以使用一个回环设备，将一个常规文件当做块设备来访问，但**并不推荐**这么做（因为对回环设备调用 `mark_buffer_dirty` 可能会阻塞，导致写操作相当慢）。创建一个 4GB 大小的常规文件（任意大小都可以，但不要太小，这里就叫 `wtfs.img`），执行格式化操作并挂载。
 ```Shell
-$ dd bs=4096 count=1048576 if=/dev/zero of=wtfs.data
-$ ./mkfs.wtfs -f wtfs.data
-$ sudo mount -o loop wtfs.data ~/wtfs-test
+$ dd bs=4096 count=1048576 if=/dev/zero of=wtfs.img
+$ ./mkfs.wtfs -f wtfs.img
+$ sudo mount -o loop wtfs.img ~/wtfs-test
 ```
 
-挂载完成后，你就可以在这个文件系统内做你任何想做的事了。
+挂载完成后，你就可以在这个文件系统内做任何你想做的事了。
 
 要卸载实例并从内核移除这个模块，执行下面的命令。
 ```Shell

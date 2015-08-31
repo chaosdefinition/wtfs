@@ -61,8 +61,7 @@ static struct file_system_type wtfs_type = {
 /* declaration of super block operations */
 static struct inode * wtfs_alloc_inode(struct super_block * vsb);
 static void wtfs_destroy_inode(struct inode * vi);
-static int wtfs_write_inode(struct inode * vi,
-	struct writeback_control * wbc);
+static int wtfs_write_inode(struct inode * vi, struct writeback_control * wbc);
 static void wtfs_evict_inode(struct inode * vi);
 static void wtfs_put_super(struct super_block * vsb);
 static int wtfs_sync_fs(struct super_block * vsb, int wait);

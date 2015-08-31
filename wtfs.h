@@ -34,13 +34,13 @@
  * version of wtfs
  * we may evolve several versions of it
  */
-#define WTFS_VERSION 0x0003 /* 0.3.0 */
+#define WTFS_VERSION 0x0003
 #define WTFS_VERSION_STR "0.3.0"
 
 /* version control */
 #define WTFS_VERSION_MAJOR(v) ((v) >> 8)
 #define WTFS_VERSION_MINOR(v) ((v) & 0xff)
-#define WTFS_VERSION_PATCH(v) ((v) ^ (v))
+#define WTFS_VERSION_PATCH(v) ((v) ^ (v)) /* always zero */
 #define WTFS_GET_VERSION(major, minor, patch) (((major) << 8) | (minor))
 
 /*
@@ -138,6 +138,7 @@
 #ifdef WTFS_DEBUG
 # define wtfs_debug(fmt, ...)\
 	printk(KERN_DEBUG "[wtfs] at %s:%d %s: " fmt,\
+	/* __FILENAME__ is defined in macro_utils.h */
 	__FILENAME__, __LINE__, __func__, ##__VA_ARGS__)
 # define wtfs_error(fmt, ...)\
 	printk(KERN_ERR "[wtfs]: " fmt, ##__VA_ARGS__)

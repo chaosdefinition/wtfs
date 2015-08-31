@@ -47,11 +47,11 @@ Or you can also use a loop device to make a regular file accessible as a block
  device, but this is **not recommended** (because calling `mark_buffer_dirty`
  may block on a loop device, which will cause write operation to be
  considerably slow). Create a 4GB (any size, but not too small, will fit)
- regular file (here we name it `wtfs.data`), do format and then mount it.
+ regular file (here we name it `wtfs.img`), do format and then mount it.
 ```Shell
-$ dd bs=4096 count=1048576 if=/dev/zero of=wtfs.data
-$ ./mkfs.wtfs -f wtfs.data
-$ sudo mount -o loop -t wtfs wtfs.data ~/wtfs-test
+$ dd bs=4096 count=1048576 if=/dev/zero of=wtfs.img
+$ ./mkfs.wtfs -f wtfs.img
+$ sudo mount -o loop -t wtfs wtfs.img ~/wtfs-test
 ```
 
 After mount, you can do anything you want within this filesystem. Just have fun.
