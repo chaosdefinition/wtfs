@@ -62,6 +62,16 @@ $ sudo umount ~/wtfs-test
 $ sudo rmmod wtfs
 ```
 
+## How to debug
+Follow the above steps except that replace the command `make` with `make debug`,
+ by doing which the binaries will contain debugging symbols and the macro
+ `DEBUG` will also be defined. Then you can use external debuggers like gdb to
+ debug `mkfs.wtfs` and `statfs.wtfs`.
+
+However, debugging the module is something more primitive since so far I haven't
+ used any kernel debugger. What I do is merely have a look at module's output
+ log... So if you have any more advanced method, please use it.
+
 ## Physical disk layout of wtfs
 Version 0.3.0
 

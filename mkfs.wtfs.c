@@ -56,6 +56,15 @@ int main(int argc, char * const * argv)
 {
 	/* used in argument parse */
 	int opt;
+	struct option long_options[] = {
+		{ "fast", no_argument, NULL, 'f' },
+		{ "quiet", no_argument, NULL, 'q' },
+		{ "label", required_argument, NULL, 'L' },
+		{ "uuid", required_argument, NULL, 'U' },
+		{ "version", no_argument, NULL, 'V' },
+		{ "help", no_argument, NULL, 'h' },
+		{ 0, 0, 0, 0 },
+	};
 
 	/* flags */
 	int quick = 0, quiet = 0;
@@ -87,16 +96,17 @@ int main(int argc, char * const * argv)
 
 	const char * usage = "Usage: mkfs.wtfs [OPTIONS] <DEVICE>\n"
 			     "Options:\n"
-			     "  -f                    quick format\n"
-			     "  -q                    quiet mode\n"
-			     "  -L <LABEL>            set filesystem label\n"
-			     "  -U <UUID>             set filesystem UUID\n"
-			     "  -V                    show version and exit\n"
-			     "  -h                    show this message and exit\n"
+			     "  -f, --fast            quick format\n"
+			     "  -q, --quiet           quiet mode\n"
+			     "  -L, --label=LABEL     set filesystem label\n"
+			     "  -U, --uuid=UUID       set filesystem UUID\n"
+			     "  -V, --version         show version and exit\n"
+			     "  -h, --help            show this message and exit\n"
 			     "\n";
 
 	/* parse arguments */
-	while ((opt = getopt(argc, argv, "fqL:U:Vh")) != -1) {
+	while ((opt = getopt_long(argc, argv, "fqL:U:Vh",
+		long_options, NULL)) != -1) {
 		switch (opt) {
 		case 'f':
 			quick = 1;
@@ -394,7 +404,7 @@ static int write_block_bitmap(int fd, uint64_t inode_tables,
 	uint64_t full_bytes = (blk_bitmaps + inode_tables + inode_bitmaps +
 		3) / 8;
 
-	/* half byte fill (1 << half_byte) - 1 */
+	/* half byte fills (1 << half_byte) - 1 */
 	uint64_t half_byte = (blk_bitmaps + inode_tables + inode_bitmaps +
 		3) % 8;
 
@@ -484,18 +494,19 @@ static int write_inode_bitmap(int fd, uint64_t inode_tables,
 
 static int write_root_dir(int fd)
 {
-	struct wtfs_dir_block root_blk;
-	struct wtfs_dentry dot = {
-		.inode_no = WTFS_ROOT_INO,
-		.filename = ".",
-	};
-	struct wtfs_dentry dotdot = {
-		.inode_no = WTFS_ROOT_INO,
-		.filename = "..",
+	struct wtfs_dir_block root_blk = {
+		.entries = {
+			[0] = {
+				.inode_no = WTFS_ROOT_INO,
+				.filename = ".",
+			},
+			[1] = {
+				.inode_no = WTFS_ROOT_INO,
+				.filename = "..",
+			},
+		},
 	};
 
-	root_blk.entries[0] = dot;
-	root_blk.entries[1] = dotdot;
 	lseek(fd, WTFS_DB_FIRST * WTFS_BLOCK_SIZE, SEEK_SET);
 	if (write(fd, &root_blk, sizeof(root_blk)) != sizeof(root_blk)) {
 		return -EIO;

@@ -59,6 +59,11 @@
  * 5 | data blocks...   |
  *   +------------------+
  *
+ * -- filesystem overall information --
+ * supported file types:            regular file, directory, symbolic link
+ * label supported:                 yes
+ * UUID supported:                  yes
+ *
  * -- block information --
  * size of each block:              4096 bytes
  *
@@ -72,9 +77,13 @@
  * -- directory block information --
  * size of each dentry:             64 bytes
  * max dentries per block:          63
+ * max size of file name:           56 bytes
  *
  * -- data block information --
  * size of real data in each block: 4088 bytes
+ *
+ * -- symlink block information --
+ * max size of symlink content:     4094 bytes
  */
 
 /*
