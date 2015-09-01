@@ -73,7 +73,7 @@ However, debugging the module is something more primitive since so far I haven't
  log... So if you have any more advanced method, please use it.
 
 ## Physical disk layout of wtfs
-Version 0.3.0
+Version 0.4.0
 
 Block 0 | Block 1 | Block 2 | Block 3 | Block 4 | Block 5... |
 ------- | ------- | ------- | ------- | ------- | ---------- |
