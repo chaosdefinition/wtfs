@@ -135,9 +135,6 @@
 /* inode number of root directory */
 #define WTFS_ROOT_INO 1
 
-/* max inode number */
-#define WTFS_INODE_MAX (WTFS_BITMAP_SIZE * 8)
-
 /* DEBUG macro for wtfs */
 #ifdef DEBUG
 # define WTFS_DEBUG 1
@@ -147,8 +144,11 @@
 #ifdef WTFS_DEBUG
 # define wtfs_debug(fmt, ...)\
 	printk(KERN_DEBUG "[wtfs] at %s:%d %s: " fmt,\
-	/* __FILENAME__ is defined in macro_utils.h */
-	__FILENAME__, __LINE__, __func__, ##__VA_ARGS__)
+	__FILENAME__, __LINE__, __func__, ##__VA_ARGS__) /*
+							  * __FILENAME__ is
+							  * defined in
+							  * macro_utils.h
+							  */
 # define wtfs_error(fmt, ...)\
 	printk(KERN_ERR "[wtfs]: " fmt, ##__VA_ARGS__)
 # define wtfs_info(fmt, ...)\

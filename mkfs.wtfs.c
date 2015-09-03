@@ -59,6 +59,7 @@ int main(int argc, char * const * argv)
 	struct option long_options[] = {
 		{ "fast", no_argument, NULL, 'f' },
 		{ "quiet", no_argument, NULL, 'q' },
+		{ "imaps", required_argument, NULL, 'i' },
 		{ "label", required_argument, NULL, 'L' },
 		{ "uuid", required_argument, NULL, 'U' },
 		{ "version", no_argument, NULL, 'V' },
@@ -81,8 +82,11 @@ int main(int argc, char * const * argv)
 	/* block bitmaps */
 	uint64_t blk_bitmaps;
 
-	/* inode bitmaps */
-	uint64_t inode_bitmaps;
+	/* inode bitmaps (default 1) */
+	uint64_t inode_bitmaps = 1;
+
+	/* minimum data blocks (not exact) */
+	uint64_t min_data_blks;
 
 	/* filesystem label */
 	char * label = NULL;
@@ -98,6 +102,7 @@ int main(int argc, char * const * argv)
 			     "Options:\n"
 			     "  -f, --fast            quick format\n"
 			     "  -q, --quiet           quiet mode\n"
+			     "  -i, --imaps=IMAPS     set inode bitmap count\n"
 			     "  -L, --label=LABEL     set filesystem label\n"
 			     "  -U, --uuid=UUID       set filesystem UUID\n"
 			     "  -V, --version         show version and exit\n"
@@ -105,7 +110,7 @@ int main(int argc, char * const * argv)
 			     "\n";
 
 	/* parse arguments */
-	while ((opt = getopt_long(argc, argv, "fqL:U:Vh",
+	while ((opt = getopt_long(argc, argv, "fqi:L:U:Vh",
 		long_options, NULL)) != -1) {
 		switch (opt) {
 		case 'f':
@@ -114,6 +119,22 @@ int main(int argc, char * const * argv)
 
 		case 'q':
 			quiet = 1;
+			break;
+
+		case 'i':
+			inode_bitmaps = strtol(optarg, NULL, 10);
+			/*
+			 * here we just do the left side of the range of
+			 * inode bitmap count, and the right side will be done
+			 * after knowing the device size
+			 *
+			 * note that underflow is included in this judgement
+			 */
+			if (inode_bitmaps <= 0) {
+				fprintf(stderr, "%s: too few inode bitmaps\n",
+					argv[0]);
+				goto error;
+			}
 			break;
 
 		case 'L':
@@ -197,20 +218,21 @@ int main(int argc, char * const * argv)
 		break;
 
 	default:
-		fprintf(stderr,
-			"%s: only block device and regular file supported\n",
-			argv[0]);
+		fprintf(stderr, "%s: only block device and regular file "
+			"supported\n", argv[0]);
 		goto error;
 	}
 
 	/* do calculation */
 	blocks = bytes / WTFS_BLOCK_SIZE;
-	inode_bitmaps = 1;
 	inode_tables = inode_bitmaps * WTFS_BITMAP_SIZE * 8 /
 		WTFS_INODE_COUNT_PER_TABLE + 1;
 	blk_bitmaps = blocks / (WTFS_BITMAP_SIZE * 8);
-	if (blocks < inode_tables + blk_bitmaps + inode_bitmaps + 3) {
-		fprintf(stderr, "%s: volume too small\n", argv[0]);
+	min_data_blks = inode_bitmaps * WTFS_BLOCK_SIZE * 8;
+	if (blocks < inode_tables + blk_bitmaps + inode_bitmaps +
+		min_data_blks + 3) {
+		fprintf(stderr, "%s: too many inode bitmaps, "
+			"or volume too small\n", argv[0]);
 		goto error;
 	}
 	if (blocks % (WTFS_BITMAP_SIZE * 8) != 0) {
@@ -328,7 +350,7 @@ static int write_super_block(int fd, uint64_t blocks, uint64_t inode_tables,
 static int write_inode_table(int fd, uint64_t inode_tables)
 {
 	/* buffer to write */
-	struct wtfs_inode_table inode_table;
+	struct wtfs_inode_table table;
 
 	/* inode for root dir */
 	struct wtfs_inode inode = {
@@ -361,23 +383,21 @@ static int write_inode_table(int fd, uint64_t inode_tables)
 	}
 
 	/* write 1st inode table */
-	memset(&inode_table, 0, sizeof(inode_table));
-	inode_table.inodes[0] = inode;
-	inode_table.next = wtfs64_to_cpu(index[1]);
+	memset(&table, 0, sizeof(table));
+	table.inodes[0] = inode;
+	table.next = wtfs64_to_cpu(index[1]);
 	lseek(fd, index[0] * WTFS_BLOCK_SIZE, SEEK_SET);
-	if (write(fd, &inode_table, sizeof(inode_table)) !=
-		sizeof(inode_table)) {
+	if (write(fd, &table, sizeof(table)) != sizeof(table)) {
 		ret = -EIO;
 		goto error;
 	}
 
 	/* write remaining inode tables */
-	memset(&inode_table, 0, sizeof(inode_table));
+	memset(&table, 0, sizeof(table));
 	for (i = 1; i < inode_tables; ++i) {
-		inode_table.next = wtfs64_to_cpu(index[i + 1]);
+		table.next = wtfs64_to_cpu(index[i + 1]);
 		lseek(fd, index[i] * WTFS_BLOCK_SIZE, SEEK_SET);
-		if (write(fd, &inode_table, sizeof(inode_table)) !=
-			sizeof(inode_table)) {
+		if (write(fd, &table, sizeof(table)) != sizeof(table)) {
 			ret = -EIO;
 			goto error;
 		}
@@ -484,12 +504,50 @@ static int write_inode_bitmap(int fd, uint64_t inode_tables,
 		.data = { 0x03 },
 	};
 
-	lseek(fd, WTFS_RB_INODE_BITMAP * WTFS_BLOCK_SIZE, SEEK_SET);
-	if (write(fd, &bitmap, sizeof(bitmap)) != sizeof(bitmap)) {
-		return -EIO;
-	} else {
-		return 0;
+	/* block number index array */
+	uint64_t * index = NULL;
+	uint64_t i;
+	int ret = -EINVAL;
+
+	/* construct index */
+	index = (uint64_t *)calloc(inode_bitmaps + 1, sizeof(uint64_t));
+	if (index == NULL) {
+		ret = -ENOMEM;
+		goto error;
 	}
+	index[0] = WTFS_RB_INODE_BITMAP;
+	for (i = 1; i < inode_bitmaps; ++i) {
+		index[i] = WTFS_RB_INODE_BITMAP + inode_tables + blk_bitmaps -
+			2 + i;
+	}
+
+	/* write 1st bitmap */
+	bitmap.next = cpu_to_wtfs64(index[1]);
+	lseek(fd, index[0] * WTFS_BLOCK_SIZE, SEEK_SET);
+	if (write(fd, &bitmap, sizeof(bitmap)) != sizeof(bitmap)) {
+		ret = -EIO;
+		goto error;
+	}
+
+	/* write remaining bitmaps */
+	memset(&bitmap, 0, sizeof(bitmap));
+	for (i = 1; i < inode_bitmaps; ++i) {
+		bitmap.next = wtfs64_to_cpu(index[i + 1]);
+		lseek(fd, index[i] * WTFS_BLOCK_SIZE, SEEK_SET);
+		if (write(fd, &bitmap, sizeof(bitmap)) != sizeof(bitmap)) {
+			ret = -EIO;
+			goto error;
+		}
+	}
+
+	free(index);
+	return 0;
+
+error:
+	if (index != NULL) {
+		free(index);
+	}
+	return ret;
 }
 
 static int write_root_dir(int fd)

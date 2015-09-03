@@ -298,7 +298,8 @@ static int wtfs_statfs(struct dentry * dentry, struct kstatfs * buf)
 	buf->f_files = sbi->inode_count;
 
 	/* free inode count */
-	buf->f_ffree = WTFS_INODE_MAX - sbi->inode_count;
+	buf->f_ffree = sbi->inode_bitmap_count * WTFS_BITMAP_SIZE * 8 -
+		sbi->inode_count;
 
 	/* high & low 32 bits of device id */
 	buf->f_fsid.val[0] = (u32)id;

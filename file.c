@@ -237,7 +237,7 @@ static ssize_t wtfs_write(struct file * file, const char __user * buf,
 				if ((file_pos->blk_no = wtfs_alloc_block(vsb))
 					== 0) {
 					/*
-					 * here failure is not allowed, neither
+					 * here failure is not allowed, nor
 					 * in the following
 					 */
 					goto error;
@@ -312,8 +312,9 @@ static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence)
 	uint64_t blk_no;
 	int ret = -EINVAL;
 
-	wtfs_debug("llseek called, inode %lu, current pos %llu, start pos %d, "
-		"offset %llu\n", vi->i_ino, file->f_pos, whence, offset);
+	wtfs_debug("llseek called, inode %lu, file size %llu, "
+		"current pos %llu, start pos %d, offset %llu\n",
+		vi->i_ino, file_size, file->f_pos, whence, offset);
 
 	/*
 	 * in llseek, we update not only file position pointer, but also blk_no
@@ -516,7 +517,7 @@ static int wtfs_release(struct inode * vi, struct file * file)
 		}
 
 		if (i < min_blocks || next == 0) {
-			wtfs_error("something strang happened on inode %lu\n",
+			wtfs_error("something strange happened on inode %lu\n",
 				vi->i_ino);
 			goto error;
 		}
