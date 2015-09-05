@@ -70,7 +70,7 @@ struct wtfs_file_pos
 static ssize_t wtfs_read(struct file * file, char __user * buf, size_t length,
 	loff_t * ppos)
 {
-	struct inode * vi = file->f_inode;
+	struct inode * vi = file_inode(file);
 	struct super_block * vsb = vi->i_sb;
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
 	struct wtfs_file_pos * file_pos = file->private_data;
@@ -175,7 +175,7 @@ error:
 static ssize_t wtfs_write(struct file * file, const char __user * buf,
 	size_t length, loff_t * ppos)
 {
-	struct inode * vi = file->f_inode;
+	struct inode * vi = file_inode(file);
 	struct super_block * vsb = vi->i_sb;
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
 	struct wtfs_file_pos * file_pos = file->private_data;
@@ -301,7 +301,7 @@ error:
  */
 static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence)
 {
-	struct inode * vi = file->f_inode;
+	struct inode * vi = file_inode(file);
 	struct super_block * vsb = vi->i_sb;
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
 	struct wtfs_file_pos * file_pos = file->private_data;

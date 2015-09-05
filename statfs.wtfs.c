@@ -20,6 +20,8 @@
  * along with wtfs.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -43,45 +45,87 @@ static int read_root_dir(int fd);
 int main(int argc, char * const * argv)
 {
 	int fd = -1;
-	char err_msg[BUF_SIZE], * tmp = NULL;
-	const char * usage = "Usage: statfs.wtfs <DEVICE>\n\n";
+	int ret;
+	char err_msg[BUF_SIZE], buf[BUF_SIZE], * part = NULL;
+	struct stat stat;
+	const char * usage = "Usage: statfs.wtfs <FILE>\n"
+			     "FILE can be a block device containing a wtfs "
+			     "instance, or any file within a\n"
+			     "wtfs instance\n";
 
 	if (argc != 2) {
 		fprintf(stderr, "%s", usage);
 		goto error;
 	}
 
-	/* open device file */
+	/* open and stat input file */
 	if ((fd = open(argv[1], O_RDONLY)) < 0) {
 		snprintf(err_msg, BUF_SIZE, "%s: cannot open '%s'",
 			argv[0], argv[1]);
 		perror(err_msg);
 		goto error;
 	}
+	if (fstat(fd, &stat) < 0) {
+		snprintf(err_msg, BUF_SIZE, "%s: unable to stat '%s'",
+			argv[0], argv[1]);
+		perror(err_msg);
+		goto error;
+	}
+
+	switch (stat.st_mode & S_IFMT) {
+	/* block device containing a wtfs instance */
+	case S_IFBLK:
+		break;
+
+	/* file within a wtfs instance */
+	case S_IFREG:
+	case S_IFDIR:
+	case S_IFLNK:
+		snprintf(buf, BUF_SIZE, "/dev/block/%u:%u",
+			major(stat.st_dev), minor(stat.st_dev));
+		close(fd);
+		if ((fd = open(buf, O_RDONLY)) < 0) {
+			snprintf(err_msg, BUF_SIZE, "%s: cannot open '%s'",
+				buf, argv[1]);
+			perror(err_msg);
+			goto error;
+		}
+		break;
+
+	default:
+		fprintf(stderr, "%s: no wtfs instance found\n", argv[0]);
+		goto error;
+	}
 
 	/* read blocks */
-	if (read_boot_block(fd) < 0) {
-		tmp = "bootloader block";
+	if ((ret = read_boot_block(fd)) < 0) {
+		part = "bootloader block";
 		goto out;
 	}
-	if (read_super_block(fd) < 0) {
-		tmp = "super block";
+	if ((ret = read_super_block(fd)) < 0) {
+		if (ret == -EPERM) {
+			fprintf(stderr, "%s: no wtfs instance found\n",
+				argv[0]);
+			goto error;
+		} else {
+			part = "super block";
+			goto out;
+		}
+	}
+	if ((ret = read_inode_table(fd)) < 0) {
+		part = "inode table";
 		goto out;
 	}
-	if (read_inode_table(fd) < 0) {
-		tmp = "inode table";
+	if ((ret = read_block_bitmap(fd)) < 0) {
+		part = "block bitmap";
 		goto out;
 	}
-	if (read_block_bitmap(fd) < 0) {
-		tmp = "block bitmap";
+	if ((ret = read_inode_bitmap(fd)) < 0) {
+		part = "inode bitmap";
 		goto out;
 	}
-	if (read_inode_bitmap(fd) < 0) {
-		tmp = "inode bitmap";
-		goto out;
-	}
-	if (read_root_dir(fd) < 0) {
-		tmp = "root directory";
+	if ((ret = read_root_dir(fd)) < 0) {
+		part = "root directory";
 		goto out;
 	}
 
@@ -89,7 +133,7 @@ int main(int argc, char * const * argv)
 	return 0;
 
 out:
-	fprintf(stderr, "%s: unable to read %s\n", argv[0], tmp);
+	fprintf(stderr, "%s: unable to read %s\n", argv[0], part);
 
 error:
 	if (fd >= 0) {
