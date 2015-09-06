@@ -209,7 +209,7 @@ int is_ino_valid(struct super_block * vsb, uint64_t inode_no)
  *
  * @vsb: the VFS super block structure
  * @entry: the entry block number
- * @count: the position of the block we want in the linked list
+ * @count: the position in the linked list
  * @blk_no: place to store the block number, can be NULL
  *
  * return: the buffer_head of the block on success, error code otherwise
@@ -236,6 +236,7 @@ struct buffer_head * wtfs_get_linked_block(struct super_block * vsb,
 	while (next != 0) {
 		if ((bh = sb_bread(vsb, next)) == NULL) {
 			wtfs_error("unable to read the block %llu\n", entry);
+			ret = -EIO;
 			goto error;
 		}
 		if (i == count) {
@@ -251,6 +252,67 @@ struct buffer_head * wtfs_get_linked_block(struct super_block * vsb,
 		}
 	}
 	return ERR_PTR(ret);
+
+error:
+	if (bh != NULL) {
+		brelse(bh);
+	}
+	return ERR_PTR(ret);
+}
+
+/********************* implementation of wtfs_get_last_linked_block ***********/
+
+/*
+ * get the last block in the block linked list
+ *
+ * @vsb: the VFS super block structure
+ * @entry: the entry block number
+ * @count: place to store the position in the linked list, can be NULL
+ * @blk_no: place to store the block number, can be NULL
+ *
+ * return: the buffer_head of the block on success, error code otherwise
+ *         it must be released outside after calling this function
+ */
+struct buffer_head * wtfs_get_last_linked_block(struct super_block * vsb,
+	uint64_t entry, uint64_t * count, uint64_t * blk_no)
+{
+	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
+	struct wtfs_linked_block * blk = NULL;
+	struct buffer_head * bh = NULL;
+	uint64_t prev, next;
+	int ret = -EINVAL;
+
+	/* first check if the start block number is valid */
+	if (entry < WTFS_RB_INODE_TABLE || entry >= sbi->block_count) {
+		wtfs_error("invalid block number %llu in linked list\n", entry);
+		goto error;
+	}
+
+	/* do get the last block */
+	next = entry;
+	*count = 0;
+	while (next != 0) {
+		if ((bh = sb_bread(vsb, next)) == NULL) {
+			wtfs_error("unable to read the block %llu\n", entry);
+			ret = -EIO;
+			goto error;
+		}
+		blk = (struct wtfs_linked_block *)bh->b_data;
+
+		prev = next;
+		next = wtfs64_to_cpu(blk->next);
+		if (next != 0) {
+			if (count != NULL) {
+				++*count;
+			}
+			brelse(bh);
+		}
+	}
+
+	if (blk_no != NULL) {
+		*blk_no = prev;
+	}
+	return bh;
 
 error:
 	if (bh != NULL) {
@@ -331,7 +393,7 @@ int wtfs_test_bitmap_bit(struct super_block * vsb, uint64_t entry,
 		uint64_t count, uint64_t offset)
 {
 	struct buffer_head * bh = NULL;
-	int ret = -EINVAL;
+	int ret;
 
 	bh = wtfs_get_linked_block(vsb, entry, count, NULL);
 	if (IS_ERR(bh)) {
@@ -360,7 +422,7 @@ struct buffer_head * wtfs_init_linked_block(struct super_block * vsb,
 {
 	struct wtfs_linked_block * blk = NULL;
 	struct buffer_head * bh = NULL;
-	int ret = -EINVAL;
+	int ret = -EIO;
 
 	wtfs_debug("read block %llu\n", blk_no);
 	if ((bh = sb_bread(vsb, blk_no)) == NULL) {
@@ -679,7 +741,7 @@ int wtfs_sync_super(struct super_block * vsb, int wait)
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	struct wtfs_super_block * sb = NULL;
 	struct buffer_head * bh = NULL;
-	int ret = -EINVAL;
+	int ret = -EIO;
 
 	if ((bh = sb_bread(vsb, WTFS_RB_SUPER)) == NULL) {
 		wtfs_error("unable to read the super block\n");
@@ -705,7 +767,6 @@ int wtfs_sync_super(struct super_block * vsb, int wait)
 		sync_dirty_buffer(bh);
 		if (buffer_req(bh) && !buffer_uptodate(bh)) {
 			wtfs_error("super block sync failed\n");
-			ret = -EIO;
 			goto error;
 		}
 	}
@@ -793,7 +854,7 @@ int wtfs_add_entry(struct inode * dir_vi, uint64_t inode_no,
 	struct buffer_head * bh = NULL, * bh2 = NULL;
 	uint64_t next = dir_info->first_block, blk_no = 0;
 	int i;
-	int ret = -EINVAL;
+	int ret = -EIO;
 
 	/* check name */
 	if (length == 0) {
@@ -897,7 +958,7 @@ int wtfs_delete_entry(struct inode * dir_vi, uint64_t inode_no)
 	struct buffer_head * bh = NULL;
 	uint64_t next = dir_info->first_block;
 	int i;
-	int ret = -EINVAL;
+	int ret = -EIO;
 
 	/* find the specified entry in existing entries */
 	while (next != 0) {

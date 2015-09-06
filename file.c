@@ -305,10 +305,10 @@ static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence)
 	struct super_block * vsb = vi->i_sb;
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
 	struct wtfs_file_pos * file_pos = file->private_data;
-	struct buffer_head * bh = NULL;
+	struct buffer_head * bh = NULL, * bh2 = NULL;
 	uint64_t file_size = i_size_read(vi);
 	uint64_t seek_pos;
-	uint64_t count, count2;
+	uint64_t seek_blk, current_blk, last_blk, i;
 	uint64_t blk_no;
 	int ret = -EINVAL;
 
@@ -323,16 +323,20 @@ static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence)
 	switch (whence) {
 	case SEEK_SET:
 		/* check if exceeding the file size */
-		if (offset < 0 || offset > file_size) {
+		seek_pos = offset;
+		if (seek_pos < 0) {
 			goto error;
 		}
+		if (seek_pos > file_size) {
+			goto beyond_eof;
+		}
 
-		/* get block number of the count-th block */
-		count = offset / WTFS_DATA_SIZE;
-		bh = wtfs_get_linked_block(vsb, info->first_block, count,
+		/* get block number of the seek_blk-th block */
+		seek_blk = seek_pos / WTFS_DATA_SIZE;
+		bh = wtfs_get_linked_block(vsb, info->first_block, seek_blk,
 			&blk_no);
 		if (IS_ERR(bh)) {
-			ret = -EIO;
+			ret = PTR_ERR(bh);
 			goto error;
 		}
 		brelse(bh);
@@ -340,20 +344,23 @@ static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence)
 		file->f_pos = file_pos->pos = offset;
 		file_pos->blk_no = blk_no; /* update block number */
 
-		wtfs_debug("seek to %llu-th block %llu\n", count, blk_no);
+		wtfs_debug("seek to %llu-th block %llu\n", seek_blk, blk_no);
 
 		return file->f_pos;
 
 	case SEEK_CUR:
 		/* check if exceeding the file size */
 		seek_pos = file->f_pos + offset;
-		if (seek_pos < 0 || seek_pos > file_size) {
+		if (seek_pos < 0) {
 			goto error;
 		}
+		if (seek_pos > file_size) {
+			goto beyond_eof;
+		}
 
-		count = seek_pos / WTFS_DATA_SIZE;
-		count2 = file->f_pos / WTFS_DATA_SIZE;
-		if (count == count2) {
+		seek_blk = seek_pos / WTFS_DATA_SIZE;
+		current_blk = file->f_pos / WTFS_DATA_SIZE;
+		if (seek_blk == current_blk) {
 			/*
 			 * current position and seeking position are in the
 			 * same block
@@ -361,10 +368,10 @@ static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence)
 			file->f_pos = file_pos->pos = seek_pos;
 
 			wtfs_debug("seek to %llu-th block %llu\n",
-				count, file_pos->blk_no);
+				seek_blk, file_pos->blk_no);
 
 			return file->f_pos;
-		} else if (count > count2) {
+		} else if (seek_blk > current_blk) {
 			/*
 			 * current position and seeking position are not in the
 			 * same block, and the seeking position is ahead of the
@@ -372,9 +379,9 @@ static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence)
 			 * link from the current block
 			 */
 			bh = wtfs_get_linked_block(vsb, file_pos->blk_no,
-				count - count2, &blk_no);
+				seek_blk - current_blk, &blk_no);
 			if (IS_ERR(bh)) {
-				ret = -EIO;
+				ret = PTR_ERR(bh);
 				goto error;
 			}
 			brelse(bh);
@@ -383,7 +390,7 @@ static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence)
 			file_pos->blk_no = blk_no; /* update block number */
 
 			wtfs_debug("seek to %llu-th block %llu\n",
-				count, blk_no);
+				seek_blk, blk_no);
 
 			return file->f_pos;
 		}
@@ -391,18 +398,21 @@ static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence)
 		 * in other cases, we have no efficient way to do seeking from
 		 * the current position, so just seek from the beginning
 		 */
-		return wtfs_llseek(file, file->f_pos + offset, SEEK_SET);
+		return wtfs_llseek(file, seek_pos, SEEK_SET);
 
 	case SEEK_END:
 		/* check if exceeding the file size */
 		seek_pos = file_size + offset;
-		if (offset > 0 || seek_pos < 0) {
+		if (seek_pos < 0) {
 			goto error;
 		}
+		if (seek_pos > file_size) {
+			goto beyond_eof;
+		}
 
-		count = seek_pos / WTFS_DATA_SIZE;
-		count2 = file->f_pos / WTFS_DATA_SIZE;
-		if (count == count2) {
+		seek_blk = seek_pos / WTFS_DATA_SIZE;
+		current_blk = file->f_pos / WTFS_DATA_SIZE;
+		if (seek_blk == current_blk) {
 			/*
 			 * current position and seeking position are in the
 			 * same block
@@ -413,7 +423,7 @@ static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence)
 			file->f_pos = file_pos->pos = seek_pos;
 
 			wtfs_debug("seek to %llu-th block %llu\n",
-				count, file_pos->blk_no);
+				seek_blk, file_pos->blk_no);
 
 			return file->f_pos;
 		}
@@ -421,8 +431,63 @@ static loff_t wtfs_llseek(struct file * file, loff_t offset, int whence)
 		 * in other cases, we have no efficient way to do seeking from
 		 * the EOF, so just seek from the beginning
 		 */
-		return wtfs_llseek(file, file_size + offset, SEEK_SET);
+		return wtfs_llseek(file, seek_pos, SEEK_SET);
+
+	default:
+		goto error;
 	}
+
+	/*
+	 * seeking position beyond the EOF, we have to first pre-allocate enough
+	 * blocks for the hole and then update those stuffs
+	 */
+beyond_eof:
+	seek_blk = seek_pos / WTFS_DATA_SIZE;
+	current_blk = file->f_pos / WTFS_DATA_SIZE;
+
+	/* get the last block */
+	bh = wtfs_get_last_linked_block(vsb, file_pos->blk_no, &last_blk,
+		&blk_no);
+	if (IS_ERR(bh)) {
+		ret = PTR_ERR(bh);
+		goto error;
+	}
+	last_blk += current_blk;
+
+	/*
+	 * make a cross-block hole
+	 * here we do not free previously allocated blocks if an error
+	 * occurred because those blocks will be freed when releasing
+	 * the file
+	 */
+	i = seek_blk - last_blk;
+	while (i > 0) {
+		if ((blk_no = wtfs_alloc_block(vsb)) == 0) {
+			brelse(bh);
+			ret = -ENOSPC;
+			goto error;
+		}
+		bh2 = wtfs_init_linked_block(vsb, blk_no, bh);
+		if (IS_ERR(bh2)) {
+			wtfs_free_block(vsb, blk_no);
+			brelse(bh);
+			ret = -EIO;
+			goto error;
+		}
+		brelse(bh);
+		bh = bh2;
+		--i;
+	}
+	brelse(bh);
+	vi->i_blocks += seek_blk - last_blk;
+	mark_inode_dirty(vi);
+
+	file->f_pos = file_pos->pos = seek_pos;
+	file_pos->blk_no = blk_no; /* update block number */
+
+	wtfs_debug("seek to %llu-th block %llu\n", seek_blk, blk_no);
+
+	return file->f_pos;
 
 error:
 	return ret;
