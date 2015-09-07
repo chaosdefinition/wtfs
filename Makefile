@@ -31,7 +31,7 @@ all: release
 programs: mkfs.wtfs statfs.wtfs
 
 mkfs.wtfs: mkfs.wtfs.c
-	$(CC) $(CFLAGS) -o mkfs.wtfs mkfs.wtfs.c -luuid
+	$(CC) $(CFLAGS) -o mkfs.wtfs mkfs.wtfs.c -luuid -lmount
 
 statfs.wtfs: statfs.wtfs.c
 	$(CC) $(CFLAGS) -o statfs.wtfs statfs.wtfs.c -luuid

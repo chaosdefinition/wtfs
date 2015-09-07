@@ -34,11 +34,13 @@
 #include <endian.h>
 #include <errno.h>
 #include <uuid/uuid.h>
+#include <libmount/libmount.h>
 
 #include "wtfs.h"
 
 #define BUF_SIZE 4096
 
+static int check_mounted_fs(const char * filename);
 static int write_boot_block(int fd);
 static int write_super_block(int fd, uint64_t blocks, uint64_t inode_tables,
 	uint64_t blk_bitmaps, uint64_t inode_bitmaps,
@@ -59,6 +61,7 @@ int main(int argc, char * const * argv)
 	struct option long_options[] = {
 		{ "fast", no_argument, NULL, 'f' },
 		{ "quiet", no_argument, NULL, 'q' },
+		{ "force", no_argument, NULL, 'F' },
 		{ "imaps", required_argument, NULL, 'i' },
 		{ "label", required_argument, NULL, 'L' },
 		{ "uuid", required_argument, NULL, 'U' },
@@ -68,7 +71,7 @@ int main(int argc, char * const * argv)
 	};
 
 	/* flags */
-	int quick = 0, quiet = 0;
+	int quick = 0, quiet = 0, force = 0;
 
 	/* file descriptor */
 	int fd = -1;
@@ -102,6 +105,7 @@ int main(int argc, char * const * argv)
 			     "Options:\n"
 			     "  -f, --fast            quick format\n"
 			     "  -q, --quiet           quiet mode\n"
+			     "  -F, --force           force execution\n"
 			     "  -i, --imaps=IMAPS     set inode bitmap count\n"
 			     "  -L, --label=LABEL     set filesystem label\n"
 			     "  -U, --uuid=UUID       set filesystem UUID\n"
@@ -110,7 +114,7 @@ int main(int argc, char * const * argv)
 			     "\n";
 
 	/* parse arguments */
-	while ((opt = getopt_long(argc, argv, "fqi:L:U:Vh",
+	while ((opt = getopt_long(argc, argv, "fqFi:L:U:Vh",
 		long_options, NULL)) != -1) {
 		switch (opt) {
 		case 'f':
@@ -119,6 +123,10 @@ int main(int argc, char * const * argv)
 
 		case 'q':
 			quiet = 1;
+			break;
+
+		case 'F':
+			force = 1;
 			break;
 
 		case 'i':
@@ -239,6 +247,24 @@ int main(int argc, char * const * argv)
 		++blk_bitmaps;
 	}
 
+	/*
+	 * check if the filesystem is already mounted when option 'force' is
+	 * not specified
+	 */
+	if (!force) {
+		/* reuse opt */
+		opt = check_mounted_fs(argv[optind]);
+		if (opt < 0) {
+			fprintf(stderr, "%s: an error occurred when checking "
+				"mounted filesystems\n", argv[0]);
+			goto error;
+		} else if (opt == 1) {
+			fprintf(stderr, "%s: '%s' is already mounted\n",
+				argv[0], argv[optind]);
+			goto error;
+		}
+	}
+
 	/* do format */
 	if (write_boot_block(fd) < 0) {
 		tmp = "bootloader block";
@@ -287,6 +313,90 @@ error:
 		close(fd);
 	}
 	return 1;
+}
+
+/*
+ * check if the given file (device or filesystem image) is mounted
+ * return 0 or 1 on success, error code otherwise
+ */
+static int check_mounted_fs(const char * filename)
+{
+	struct libmnt_context * ctx = NULL;
+	struct libmnt_table * tbl = NULL;
+	struct libmnt_iter * itr = NULL;
+	struct libmnt_fs * fs = NULL;
+	struct libmnt_cache * cache = NULL;
+	const char * src = NULL, * type = NULL;
+	char * xsrc = NULL;
+	char buf[BUF_SIZE];
+	int ret, done;
+
+	/* first get the canonical path of the file */
+	if (realpath(filename, buf) == NULL) {
+		ret = -EINVAL;
+		goto error;
+	}
+
+	/* initialize libmount */
+	if ((ctx = mnt_new_context()) == NULL) {
+		ret = -ENOMEM;
+		goto error;
+	}
+	if ((ret = mnt_context_get_mtab(ctx, &tbl)) < 0) {
+		goto error;
+	}
+	if ((itr = mnt_new_iter(MNT_ITER_FORWARD)) == NULL) {
+		ret = -ENOMEM;
+		goto error;
+	}
+	if ((cache = mnt_new_cache()) == NULL) {
+		ret = -ENOMEM;
+		goto error;
+	}
+
+	/* do iterate mounted filesystems */
+	done = 0;
+	while (!done) {
+		ret = mnt_table_next_fs(tbl, itr, &fs);
+		if (ret < 0) {
+			goto error;
+		} else if (ret == 1) {
+			done = 1;
+			ret = 0;
+			break;
+		}
+
+		src = mnt_fs_get_source(fs);
+		type = mnt_fs_get_fstype(fs);
+		if (!mnt_fstype_is_pseudofs(type)) {
+			xsrc = mnt_pretty_path(src, cache);
+		}
+		if (strcmp(buf, xsrc == NULL ? src : xsrc) == 0) {
+			done = 1;
+			ret = 1;
+		}
+		if (xsrc != NULL) {
+			free(xsrc);
+			xsrc = NULL;
+		}
+	}
+
+	mnt_free_cache(cache);
+	mnt_free_iter(itr);
+	mnt_free_context(ctx);
+	return ret;
+
+error:
+	if (cache != NULL) {
+		mnt_free_cache(cache);
+	}
+	if (itr != NULL) {
+		mnt_free_iter(itr);
+	}
+	if (ctx != NULL) {
+		mnt_free_context(ctx);
+	}
+	return ret;
 }
 
 static int write_boot_block(int fd)
