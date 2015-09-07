@@ -5,7 +5,7 @@ compiler:
 before_install:
   - KERNEL_VERSION="3.13.0-55-generic"
   - sudo apt-get update -qq
-  - sudo apt-get install -y -qq "linux-headers-$KERNEL_VERSION" uuid-dev
+  - sudo apt-get install -y -qq "linux-headers-$KERNEL_VERSION" uuid-dev libmount-dev
 script:
   # let's do something simple first
   - make module KV="$KERNEL_VERSION"
