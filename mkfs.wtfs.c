@@ -163,7 +163,7 @@ int main(int argc, char * const * argv)
 			break;
 
 		case 'V':
-			printf("\n%s version %d.%d.%d\n\n", argv[0],
+			printf("\nmkfs.wtfs version %d.%d.%d\n\n",
 				WTFS_VERSION_MAJOR(WTFS_VERSION),
 				WTFS_VERSION_MINOR(WTFS_VERSION),
 				WTFS_VERSION_PATCH(WTFS_VERSION));
@@ -454,8 +454,7 @@ static int write_super_block(int fd, uint64_t blocks, uint64_t inode_tables,
 }
 
 /*
- * there are at most 4088 * 8 inodes, which requires only 520 inode tables,
- * so we pre-build the whole inode table for the device
+ * pre-build the whole inode table for the device
  */
 static int write_inode_table(int fd, uint64_t inode_tables)
 {
@@ -524,8 +523,8 @@ error:
 }
 
 /*
- * since the device size is fixed,
- * we pre-build the whole block bitmap for the device
+ * since the device size is fixed, we pre-build the whole block bitmap for
+ * the device
  */
 static int write_block_bitmap(int fd, uint64_t inode_tables,
 	uint64_t blk_bitmaps, uint64_t inode_bitmaps)

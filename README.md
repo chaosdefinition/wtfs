@@ -11,14 +11,12 @@ Licensed under [GPLv3](https://github.com/chaosdefinition/wtfs/blob/master/LICEN
 ## How to use it
 Before compiling, you need to install build essentials and Linux kernel header
  files of proper version to enable kernel module building (gcc version >= 4.6
- and linux version >= 3.11). In addition, uuid header file is required to build
- `mkfs.wtfs` and `statfs.wtfs` now.
+ and linux version >= 3.11). In addition, uuid and libmount header files are
+ required to build `mkfs.wtfs` and `statfs.wtfs` now.
 ```Shell
-# for Debian derivatives
-$ sudo apt-get install build-essential linux-headers-`uname -r` uuid-dev
-# for Redhat derivatives
-$ sudo yum groupinstall "Development Tools"
-$ sudo yum install kernel-devel kernel-headers libuuid-devel
+# only for Debian derivatives
+$ sudo apt-get install build-essential linux-headers-`uname -r`
+$ sudo apt-get install uuid-dev libmount-dev
 ```
 
 After meeting the build prerequisite, clone this repository.
@@ -45,9 +43,9 @@ $ sudo mount -t wtfs /dev/sda ~/wtfs-test
 ```
 Or you can also use a loop device to make a regular file accessible as a block
  device, but this is **not recommended** (because calling `mark_buffer_dirty`
- may block on a loop device, which will cause write operation to be
- considerably slow). Create a 4GB (any size, but not too small, will fit)
- regular file (here we name it `wtfs.img`), do format and then mount it.
+ may block on a loop device, causing write operation to be considerably slow).
+ Create a 4GB (any size, but not too small, will fit) regular file (here we name
+ it `wtfs.img`), do format and then mount it.
 ```Shell
 $ dd bs=4096 count=1048576 if=/dev/zero of=wtfs.img
 $ ./mkfs.wtfs -f wtfs.img
@@ -73,13 +71,13 @@ However, debugging the module is something more primitive since so far I haven't
  log... So if you have any more advanced method, please use it.
 
 ## Physical disk layout of wtfs
-Version 0.4.0
+Version 0.5.0
 
 Block 0 | Block 1 | Block 2 | Block 3 | Block 4 | Block 5... |
 ------- | ------- | ------- | ------- | ------- | ---------- |
 Boot loader block | Super block | 1st inode table | 1st block bitmap | 1st inode bitmap | Data block...
- | | 2nd inode table | 2nd block bitmap | |
- | | ... | ... | |
+ | | 2nd inode table | 2nd block bitmap | 2nd inode bitmap |
+ | | ... | ... | ... |
 
 * Size of each block is 4096 bytes.
 * Size of each inode is 64 bytes.
@@ -88,14 +86,22 @@ Boot loader block | Super block | 1st inode table | 1st block bitmap | 1st inode
 * Block 1 is super block.
 * Block 2 is the first inode table and the head of inode table chain. Because we
  use the last 8 bytes of a block as a pointer to another block, an inode table
- can contain a maximum of 63 inodes.
+ can contain a maximum of 63 inodes. The quantity of inode table is determined
+ by the quantity of inode bitmap.
 * Block 3 is the first block bitmap and the head of block bitmap chain. For the
- same reason, a block bitmap can state at most 4088 * 8 blocks.
-* Block 4 is the first inode bitmap and the head of inode bitmap chain.
- Considering that an inode bitmap can state at most 4088 * 8 blocks, which is
- enough for normal use, therefore only one inode bitmap is supported now.
+ same reason, a block bitmap can state at most 4088 * 8 blocks. The quantity of
+ block bitmap is determined by device size.
+* Block 4 is the first inode bitmap and the head of inode bitmap chain. For the
+ same reason again, an inode bitmap can state at most 4088 * 8 inodes. The
+ quantity of inode bitmap is one by default and cannot be changed before
+ version 0.5.0. Since version 0.5.0, it can be set to a value within a
+ reasonable range (bigger than zero and smaller than a specific value relating
+ to device size) when doing format.
 * Blocks from 5 are data blocks. Data blocks also have their last 8 bytes to be
- a pointer. For directories, the dentries are also recorded in data blocks.
+ a pointer except symbolic links. For symlinks, they always contain only one
+ data block each, the first 2-byte-long word of which records the length of
+ symlink content that is stored in the remaining 4094 bytes. So the max length
+ of symlink content is therefore 4094 bytes.
 
 ## Contact me
 Please send me email if you have any questions or suggestions: chaosdefinition@hotmail.com
