@@ -9,6 +9,7 @@ script:
   # let's do something simple first
   - make module KV="$KERNEL_VERSION"
   - make programs
+  - make test
 after_script:
   - make clean_programs
   - make clean_module KV="$KERNEL_VERSION"

@@ -22,7 +22,7 @@ $ git clone https://github.com/chaosdefinition/wtfs.git
 首先编译整个项目，并将生成的模块加载至内核。
 ```Shell
 $ cd wtfs && make
-$ sudo insmod wtfs.ko
+$ sudo insmod build/wtfs.ko
 ```
 
 再创建一个目录（这里就叫 `~/wtfs-test`）作为挂载点。
@@ -33,13 +33,13 @@ $ mkdir ~/wtfs-test
 使用一个块设备（这里就叫 `/dev/sda`），对它执行格式化操作并挂载到我们刚刚创建的目录下。
 ```Shell
 $ sudo ./mkfs.wtfs -f /dev/sda
-$ sudo mount /dev/sda ~/wtfs-test
+$ sudo mount -t wtfs /dev/sda ~/wtfs-test
 ```
 或者你也可以使用一个回环设备，将一个常规文件当做块设备来访问，但**并不推荐**这么做（因为对回环设备调用 `mark_buffer_dirty` 可能会阻塞，导致写操作相当慢）。创建一个 4GB 大小的常规文件（任意大小都可以，但不要太小，这里就叫 `wtfs.img`），执行格式化操作并挂载。
 ```Shell
 $ dd bs=4096 count=1048576 if=/dev/zero of=wtfs.img
 $ ./mkfs.wtfs -f wtfs.img
-$ sudo mount -o loop wtfs.img ~/wtfs-test
+$ sudo mount -o loop -t wtfs wtfs.img ~/wtfs-test
 ```
 
 挂载完成后，你就可以在这个文件系统内做任何你想做的事了。

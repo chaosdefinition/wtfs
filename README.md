@@ -27,7 +27,7 @@ $ git clone https://github.com/chaosdefinition/wtfs.git
 First compile the whole project and load the module into kernel.
 ```Shell
 $ cd wtfs && make
-$ sudo insmod wtfs.ko
+$ sudo insmod build/wtfs.ko
 ```
 
 Then create a directory (here we name it `~/wtfs-test`) as the mount point.
