@@ -18,44 +18,80 @@
 # You should have received a copy of the GNU General Public License
 # along with wtfs.  If not, see <http://www.gnu.org/licenses/>.
 
+############################## variable area ###################################
+# commands
 CC := cc
-DEBUG_CFLAGS := -DDEBUG -g
-RELEASE_CFLAGS := -O2
 RM := rm -rf
+MAKE := make
+ECHO := echo
 
-obj-m := wtfs.o
-wtfs-objs := super.o inode.o file.o dir.o helper.o
+# directories
+SRC := src
+INCLUDE := include
+BUILD := build
+TEST := test
 
+# CFLAGS
+BASE_CFLAGS := -I$(PWD)/$(INCLUDE)
+DEBUG_CFLAGS := -DDEBUG -g $(BASE_CFLAGS)
+RELEASE_CFLAGS := -O2 $(BASE_CFLAGS)
+
+ifndef CFLAGS
+	CFLAGS := $(RELEASE_CFLAGS)
+endif
+
+ifndef KCFLAGS
+	KCFLAGS := $(RELEASE_CFLAGS)
+endif
+
+# kernel version
+ifndef KV
+	KV := $(shell uname -r)
+endif
+
+############################## target area #####################################
+# default is release
 all: release
 
+# userspace programs
 programs: mkfs.wtfs statfs.wtfs
 
-mkfs.wtfs: mkfs.wtfs.c
-	$(CC) $(CFLAGS) -o mkfs.wtfs mkfs.wtfs.c -luuid -lmount
+mkfs.wtfs:
+	@$(ECHO) "  CC      $(PWD)/$(BUILD)/mkfs.wtfs"
+	@$(CC) $(CFLAGS) -o "$(BUILD)/mkfs.wtfs" "$(SRC)/mkfs.wtfs.c" -luuid -lmount
 
-statfs.wtfs: statfs.wtfs.c
-	$(CC) $(CFLAGS) -o statfs.wtfs statfs.wtfs.c -luuid
+statfs.wtfs:
+	@$(ECHO) "  CC      $(PWD)/$(BUILD)/statfs.wtfs"
+	@$(CC) $(CFLAGS) -o "$(BUILD)/statfs.wtfs" "$(SRC)/statfs.wtfs.c" -luuid
 
+# kernel module
 module:
-	make -C /lib/modules/$(KV)/build M=$(PWD) modules
+	@$(MAKE) -C /lib/modules/$(KV)/build M="$(PWD)/$(BUILD)" KCFLAGS="$(KCFLAGS)" modules
 
+# debug and release
 debug:
-	make programs CFLAGS="$(DEBUG_CFLAGS)"
-	make module CONFIG_DEBUG_INFO=1 KCFLAGS="$(DEBUG_CFLAGS)" \
-		KV=$(shell uname -r)
+	@$(MAKE) programs CFLAGS="$(DEBUG_CFLAGS)"
+	@$(MAKE) module KCFLAGS="$(DEBUG_CFLAGS)"
 
-release:
-	make programs CFLAGS="$(RELEASE_CFLAGS)"
-	make module KCFLAGS="$(RELEASE_CFLAGS)" KV=$(shell uname -r)
+release: programs module
 
+# tests
+test:
+	@bash "$(TEST)/test.sh"
+
+# clean
 clean:
-	make clean_programs
-	make clean_module KV=$(shell uname -r)
+	@$(MAKE) clean_programs
+	@$(MAKE) clean_module KV=$(shell uname -r)
 
 clean_programs:
-	$(RM) mkfs.wtfs statfs.wtfs
+	@$(ECHO) "  CLEAN   $(PWD)/$(BUILD)/mkfs.wtfs"
+	@$(ECHO) "  CLEAN   $(PWD)/$(BUILD)/statfs.wtfs"
+	@$(RM) $(BUILD)/*.wtfs
 
 clean_module:
-	make -C /lib/modules/$(KV)/build M=$(PWD) clean
+	@$(MAKE) -C /lib/modules/$(KV)/build M="$(PWD)/$(BUILD)" clean
+	@$(MAKE) -C /lib/modules/$(KV)/build M="$(PWD)" clean
 
-.PHONY: mkfs.wtfs statfs.wtfs
+# always make these three targets
+.PHONY: mkfs.wtfs statfs.wtfs test

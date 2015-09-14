@@ -35,6 +35,10 @@
 
 #define BUF_SIZE 4096
 
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
 static int read_boot_block(int fd);
 static int read_super_block(int fd);
 static int read_inode_table(int fd);
@@ -252,3 +256,7 @@ static int read_root_dir(int fd)
 
 	return 0;
 }
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */

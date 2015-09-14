@@ -40,6 +40,10 @@
 
 #define BUF_SIZE 4096
 
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
 static int check_mounted_fs(const char * filename);
 static int write_boot_block(int fd);
 static int write_super_block(int fd, uint64_t blocks, uint64_t inode_tables,
@@ -714,3 +718,7 @@ static void do_deep_format(int fd, uint64_t blocks, uint64_t inode_tables,
 		printf("\ndeep format completed\n");
 	}
 }
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */

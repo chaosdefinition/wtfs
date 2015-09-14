@@ -1,4 +1,4 @@
-# binary files
+# binaries
 *.o
 *.ko
 *.wtfs
@@ -10,3 +10,7 @@
 .tmp_versions/
 Module.symvers
 modules.order
+
+# Sublime Text project files
+*.sublime-project
+*.sublime-workspace
