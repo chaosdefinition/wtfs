@@ -134,7 +134,7 @@ error:
 
 /*
  * get the physical inode from disk
- * the buffer_head must be released after calling this function
+ * the buffer_head must be released after this function being called
  *
  * @vsb: the VFS super block structure
  * @inode_no: inode number
@@ -213,7 +213,7 @@ int is_ino_valid(struct super_block * vsb, uint64_t inode_no)
  * @blk_no: place to store the block number, can be NULL
  *
  * return: the buffer_head of the block on success, error code otherwise
- *         it must be released outside after calling this function
+ *         it must be released outside after this function being called
  */
 struct buffer_head * wtfs_get_linked_block(struct super_block * vsb,
 	uint64_t entry, uint64_t count, uint64_t * blk_no)
@@ -271,7 +271,7 @@ error:
  * @blk_no: place to store the block number, can be NULL
  *
  * return: the buffer_head of the block on success, error code otherwise
- *         it must be released outside after calling this function
+ *         it must be released outside after this function being called
  */
 struct buffer_head * wtfs_get_last_linked_block(struct super_block * vsb,
 	uint64_t entry, uint64_t * count, uint64_t * blk_no)
@@ -415,7 +415,7 @@ int wtfs_test_bitmap_bit(struct super_block * vsb, uint64_t entry,
  * @prev: buffer_head of previous block to point to the block, can be NULL
  *
  * return: the buffer_head of the block on success, error code otherwise
- *         it must be released outside after calling this function
+ *         it must be released outside after this function being called
  */
 struct buffer_head * wtfs_init_linked_block(struct super_block * vsb,
 	uint64_t blk_no, struct buffer_head * prev)

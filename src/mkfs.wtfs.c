@@ -101,7 +101,8 @@ int main(int argc, char * const * argv)
 	/* filesystem UUID */
 	uuid_t uuid = { 0 };
 
-	char err_msg[BUF_SIZE], * tmp = NULL;
+	char err_msg[BUF_SIZE];
+	const char * part = NULL;
 
 	struct stat stat;
 
@@ -271,30 +272,30 @@ int main(int argc, char * const * argv)
 
 	/* do format */
 	if (write_boot_block(fd) < 0) {
-		tmp = "bootloader block";
+		part = "bootloader block";
 		goto out;
 	}
 	if (write_super_block(fd, blocks, inode_tables, blk_bitmaps,
 			inode_bitmaps, label, uuid) < 0) {
-		tmp = "super block";
+		part = "super block";
 		goto out;
 	}
 	if (write_inode_table(fd, inode_tables) < 0) {
-		tmp = "inode table";
+		part = "inode table";
 		goto out;
 	}
 	if (write_block_bitmap(fd, inode_tables, blk_bitmaps,
 		inode_bitmaps) < 0) {
-		tmp = "block bitmap";
+		part = "block bitmap";
 		goto out;
 	}
 	if (write_inode_bitmap(fd, inode_tables, blk_bitmaps,
 			inode_bitmaps) < 0) {
-		tmp = "inode bitmap";
+		part = "inode bitmap";
 		goto out;
 	}
 	if (write_root_dir(fd) < 0) {
-		tmp = "root directory";
+		part = "root directory";
 		goto out;
 	}
 	if (quick) {
@@ -310,7 +311,7 @@ int main(int argc, char * const * argv)
 	return 0;
 
 out:
-	fprintf(stderr, "%s: write %s failed\n", argv[0], tmp);
+	fprintf(stderr, "%s: write %s failed\n", argv[0], part);
 
 error:
 	if (fd >= 0) {

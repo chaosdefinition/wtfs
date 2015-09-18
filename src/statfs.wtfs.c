@@ -50,7 +50,8 @@ int main(int argc, char * const * argv)
 {
 	int fd = -1;
 	int ret;
-	char err_msg[BUF_SIZE], buf[BUF_SIZE], * part = NULL;
+	char err_msg[BUF_SIZE], buf[BUF_SIZE];
+	const char * part = NULL;
 	struct stat stat;
 	const char * usage = "Usage: statfs.wtfs <FILE>\n"
 			     "FILE can be a block device containing a wtfs "
@@ -90,7 +91,7 @@ int main(int argc, char * const * argv)
 		close(fd);
 		if ((fd = open(buf, O_RDONLY)) < 0) {
 			snprintf(err_msg, BUF_SIZE, "%s: cannot open '%s'",
-				buf, argv[1]);
+				argv[0], buf);
 			perror(err_msg);
 			goto error;
 		}
@@ -195,14 +196,19 @@ static int read_super_block(int fd)
 		wtfs64_to_cpu(sb.inode_count));
 	printf("%-24s%llu\n", "free blocks:",
 		wtfs64_to_cpu(sb.free_block_count));
-	if (strnlen(sb.label, WTFS_LABEL_MAX) != 0) {
-		printf("%-24s%s\n", "label:", sb.label);
+	/* label and UUID are supported since v0.3.0 */
+	if (WTFS_VERSION_MINOR(version) >= 3 ||
+		WTFS_VERSION_MAJOR(version) > 0) {
+		if (strnlen(sb.label, WTFS_LABEL_MAX) != 0) {
+			printf("%-24s%s\n", "label:", sb.label);
+		}
+		if (!uuid_is_null(sb.uuid)) {
+			uuid_unparse(sb.uuid, uuid_buffer);
+			uuid_buffer[36] = '\0';
+			printf("%-24s%s\n", "UUID:", uuid_buffer);
+		}
 	}
-	if (!uuid_is_null(sb.uuid)) {
-		uuid_unparse(sb.uuid, uuid_buffer);
-		uuid_buffer[36] = '\0';
-		printf("%-24s%s\n", "UUID:", uuid_buffer);
-	}
+
 	printf("\n");
 
 	return 0;

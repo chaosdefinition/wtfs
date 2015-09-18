@@ -60,30 +60,30 @@
  *   +------------------+
  *
  * -- filesystem overall information --
- * supported file types:            regular file, directory, symbolic link
- * label supported:                 yes
- * UUID supported:                  yes
+ * supported file types:		regular file, directory, symbolic link
+ * label supported:			yes
+ * UUID supported:			yes
  *
  * -- block information --
- * size of each block:              4096 bytes
+ * size of each block:			4096 bytes
  *
  * -- inode information --
- * size of each inode:              64 bytes
- * max inodes per table:            63
+ * size of each inode:			64 bytes
+ * max inodes per table:		63
  *
  * -- bitmap information --
- * max blocks/inodes per bitmap:    4088 * 8
+ * max blocks/inodes per bitmap:	4088 * 8
  *
  * -- directory block information --
- * size of each dentry:             64 bytes
- * max dentries per block:          63
- * max size of file name:           56 bytes
+ * size of each dentry:			64 bytes
+ * max dentries per block:		63
+ * max size of file name:		56 bytes
  *
  * -- data block information --
- * size of real data in each block: 4088 bytes
+ * size of real data in each block:	4088 bytes
  *
  * -- symlink block information --
- * max size of symlink content:     4094 bytes
+ * max size of symlink content:		4094 bytes
  */
 
 /*
@@ -123,14 +123,14 @@
 #define WTFS_DATA_SIZE WTFS_LNKBLK_SIZE
 
 /* reserved block indices */
-#define WTFS_RB_BOOT            0 /* boot loader block */
-#define WTFS_RB_SUPER           1 /* super block */
-#define WTFS_RB_INODE_TABLE     2 /* first inode table */
-#define WTFS_RB_BLOCK_BITMAP    3 /* first block bitmap */
-#define WTFS_RB_INODE_BITMAP    4 /* first inode bitmap */
+#define WTFS_RB_BOOT		0 /* boot loader block */
+#define WTFS_RB_SUPER		1 /* super block */
+#define WTFS_RB_INODE_TABLE	2 /* first inode table */
+#define WTFS_RB_BLOCK_BITMAP	3 /* first block bitmap */
+#define WTFS_RB_INODE_BITMAP	4 /* first inode bitmap */
 
 /* first data block index (for root directory) */
-#define WTFS_DB_FIRST           5
+#define WTFS_DB_FIRST		5
 
 /* inode number of root directory */
 #define WTFS_ROOT_INO 1
@@ -165,101 +165,101 @@
 /* structure for super block in disk */
 struct wtfs_super_block
 {
-	wtfs64_t version;                   /* 8 bytes */
-	wtfs64_t magic;                     /* 8 bytes */
-	wtfs64_t block_size;                /* 8 bytes */
-	wtfs64_t block_count;               /* 8 bytes */
+	wtfs64_t version;		/* 8 bytes */
+	wtfs64_t magic;			/* 8 bytes */
+	wtfs64_t block_size;		/* 8 bytes */
+	wtfs64_t block_count;		/* 8 bytes */
 
-	wtfs64_t inode_table_first;         /* 8 bytes */
-	wtfs64_t inode_table_count;         /* 8 bytes */
-	wtfs64_t block_bitmap_first;        /* 8 bytes */
-	wtfs64_t block_bitmap_count;        /* 8 bytes */
-	wtfs64_t inode_bitmap_first;        /* 8 bytes */
-	wtfs64_t inode_bitmap_count;        /* 8 bytes */
+	wtfs64_t inode_table_first;	/* 8 bytes */
+	wtfs64_t inode_table_count;	/* 8 bytes */
+	wtfs64_t block_bitmap_first;	/* 8 bytes */
+	wtfs64_t block_bitmap_count;	/* 8 bytes */
+	wtfs64_t inode_bitmap_first;	/* 8 bytes */
+	wtfs64_t inode_bitmap_count;	/* 8 bytes */
 
-	wtfs64_t inode_count;               /* 8 bytes */
-	wtfs64_t free_block_count;          /* 8 bytes */
+	wtfs64_t inode_count;		/* 8 bytes */
+	wtfs64_t free_block_count;	/* 8 bytes */
 
-	char label[WTFS_LABEL_MAX];         /* 32 bytes */
-	unsigned char uuid[16];             /* 16 bytes */
+	char label[WTFS_LABEL_MAX];	/* 32 bytes */
+	unsigned char uuid[16];		/* 16 bytes */
 
-	wtfs8_t padding[3952];              /* 3952 bytes */
+	wtfs8_t padding[3952];		/* 3952 bytes */
 };
 
 /* model of linked block */
 struct wtfs_linked_block
 {
-	wtfs8_t data[WTFS_LNKBLK_SIZE];     /* 4088 bytes */
-	wtfs64_t next;                      /* 8 bytes */
+	wtfs8_t data[WTFS_LNKBLK_SIZE];	/* 4088 bytes */
+	wtfs64_t next;			/* 8 bytes */
 };
 
 /* structure for inode in disk */
 struct wtfs_inode
 {
-	wtfs64_t inode_no;                  /* 8 bytes */
+	wtfs64_t inode_no;	/* 8 bytes */
 
-	union {                             /* 8 bytes */
+	union {			/* 8 bytes */
 		wtfs64_t file_size;
 		wtfs64_t dir_entry_count;
 	};
-	wtfs64_t block_count;               /* 8 bytes */
-	wtfs64_t first_block;               /* 8 bytes */
-	wtfs64_t atime;                     /* 8 bytes */
-	wtfs64_t ctime;                     /* 8 bytes */
-	wtfs64_t mtime;                     /* 8 bytes */
-	wtfs32_t mode;                      /* 4 bytes */
-	wtfs16_t uid;                       /* 2 bytes */
-	wtfs16_t gid;                       /* 2 bytes */
+	wtfs64_t block_count;	/* 8 bytes */
+	wtfs64_t first_block;	/* 8 bytes */
+	wtfs64_t atime;		/* 8 bytes */
+	wtfs64_t ctime;		/* 8 bytes */
+	wtfs64_t mtime;		/* 8 bytes */
+	wtfs32_t mode;		/* 4 bytes */
+	wtfs16_t uid;		/* 2 bytes */
+	wtfs16_t gid;		/* 2 bytes */
 };
 
 /* structure for inode table */
 struct wtfs_inode_table
 {
-	struct wtfs_inode inodes            /* 4032 bytes */
+	struct wtfs_inode inodes	/* 4032 bytes */
 	[
 		WTFS_INODE_COUNT_PER_TABLE
 	];
-	wtfs8_t padding[56];                /* 56 bytes */
-	wtfs64_t next;                      /* 8 bytes */
+	wtfs8_t padding[56];		/* 56 bytes */
+	wtfs64_t next;			/* 8 bytes */
 };
 
 /* structure for bitmap block */
 struct wtfs_bitmap_block
 {
-	wtfs8_t data[WTFS_BITMAP_SIZE];     /* 4088 bytes */
-	wtfs64_t next;                      /* 8 bytes */
+	wtfs8_t data[WTFS_BITMAP_SIZE];	/* 4088 bytes */
+	wtfs64_t next;			/* 8 bytes */
 };
 
 /* structure for directory data */
 struct wtfs_dentry
 {
-	wtfs64_t inode_no;                  /* 8 bytes */
-	char filename[WTFS_FILENAME_MAX];   /* 56 bytes */
+	wtfs64_t inode_no;			/* 8 bytes */
+	char filename[WTFS_FILENAME_MAX];	/* 56 bytes */
 };
 
 /* structure for directory data block */
 struct wtfs_dir_block
 {
-	struct wtfs_dentry entries          /* 4032 bytes */
+	struct wtfs_dentry entries	/* 4032 bytes */
 	[
 		WTFS_DENTRY_COUNT_PER_BLOCK
 	];
-	wtfs8_t padding[56];                /* 56 bytes */
-	wtfs64_t next;                      /* 8 bytes */
+	wtfs8_t padding[56];		/* 56 bytes */
+	wtfs64_t next;			/* 8 bytes */
 };
 
 /* structure for data block */
 struct wtfs_data_block
 {
-	wtfs8_t data[WTFS_DATA_SIZE];       /* 4088 bytes */
-	wtfs64_t next;                      /* 8 bytes */
+	wtfs8_t data[WTFS_DATA_SIZE];	/* 4088 bytes */
+	wtfs64_t next;			/* 8 bytes */
 };
 
 /* structure for symlink block */
 struct wtfs_symlink_block
 {
-	wtfs16_t length;                    /* 2 bytes */
-	char path[WTFS_SYMLINK_MAX];        /* 4094 bytes */
+	wtfs16_t length;		/* 2 bytes */
+	char path[WTFS_SYMLINK_MAX];	/* 4094 bytes */
 };
 
 /* following only available for module itself */
