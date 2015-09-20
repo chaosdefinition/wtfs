@@ -90,7 +90,7 @@ int main(int argc, char * const * argv)
 	uint64_t blk_bitmaps;
 
 	/* inode bitmaps (default 1) */
-	uint64_t inode_bitmaps = 1;
+	int64_t inode_bitmaps = 1;
 
 	/* minimum data blocks (not exact) */
 	uint64_t min_data_blks;
@@ -242,12 +242,24 @@ int main(int argc, char * const * argv)
 		WTFS_INODE_COUNT_PER_TABLE + 1;
 	blk_bitmaps = blocks / (WTFS_BITMAP_SIZE * 8);
 	min_data_blks = inode_bitmaps * WTFS_BLOCK_SIZE * 8;
-	if (blocks < inode_tables + blk_bitmaps + inode_bitmaps +
-		min_data_blks + 3) {
-		fprintf(stderr, "%s: too many inode bitmaps, "
-			"or volume too small\n", argv[0]);
-		goto error;
+	/*
+	 * if the number of inode bitmap is more than 1, it indicates the
+	 * volume is big enough, so give it a restriction of minimum data blocks
+	 */
+	if (inode_bitmaps > 1) {
+		if (blocks < inode_tables + blk_bitmaps + inode_bitmaps + 3 +
+			min_data_blks) {
+			fprintf(stderr, "%s: too many inode bitmaps\n",
+				argv[0]);
+			goto error;
+		}
+	} else {
+		if (blocks < inode_tables + blk_bitmaps + inode_bitmaps + 3) {
+			fprintf(stderr, "%s: volume too small\n", argv[0]);
+			goto error;
+		}
 	}
+
 	if (blocks % (WTFS_BITMAP_SIZE * 8) != 0) {
 		++blk_bitmaps;
 	}

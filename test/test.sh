@@ -34,25 +34,37 @@ test_mkfs="$test_dir/test_mkfs.sh"
 test_statfs="$test_dir/test_statfs.sh"
 test_module="$test_dir/test_module.sh"
 
+# do test
+#
 # $1: test taker name
 # $2: test taker path
 # $3: test maker path
 function do_test {
 	if [[ -f "$2" ]] && [[ -f "$3" ]]; then
-		. "$3"
-		if [[ $? -ne 0 ]]; then
+		printf "testing $1...\n"
+		( . "$3" )
+		if (( $? != 0 )); then
 			printf "$1 failed to pass the test\n"
-			exit 1
+			return 1
 		fi
 	else
 		printf "$1 is not ready for the test\n"
 	fi
+
+	return 0
 }
 
 # do tests
+result=0
 do_test "mkfs.wtfs" "$mkfs" "$test_mkfs"
+(( $? != 0 )) && result=1
 do_test "statfs.wtfs" "$statfs" "$test_statfs"
+(( $? != 0 )) && result=1
 do_test "wtfs module" "$module" "$test_module"
+(( $? != 0 )) && result=1
 
-printf "test OK!\n"
-exit 0
+if (( result == 0 )); then
+	printf "test OK!\n"
+else
+	exit 1
+fi
