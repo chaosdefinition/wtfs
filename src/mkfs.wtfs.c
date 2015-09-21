@@ -388,9 +388,11 @@ static int check_mounted_fs(const char * filename)
 		if (!mnt_fstype_is_pseudofs(type)) {
 			xsrc = mnt_pretty_path(src, cache);
 		}
-		if (strcmp(buf, xsrc == NULL ? src : xsrc) == 0) {
-			done = 1;
-			ret = 1;
+		if (src != NULL) {
+			if (strcmp(buf, xsrc == NULL ? src : xsrc) == 0) {
+				done = 1;
+				ret = 1;
+			}
 		}
 		if (xsrc != NULL) {
 			free(xsrc);

@@ -44,17 +44,8 @@ function clear_spot {
 		rm -rf "$wtfs_img"
 		unset wtfs_img
 	fi
+	unset tests
 }
-
-# the script must be called by test.sh, so check if the necessary variables
-# defined in test.sh are empty or not
-if [[ -z "$mkfs" ]] || [[ -z "$test_mkfs" ]] || [[ -z "$test_dir" ]]; then
-	return 1
-fi
-
-# now let's do test, first create a file of 100 MB
-wtfs_img=`tempfile`
-dd if=/dev/zero of="$wtfs_img" bs=1024 count=100000 2> /dev/null
 
 ################################################################################
 # following are test functions
@@ -62,32 +53,37 @@ dd if=/dev/zero of="$wtfs_img" bs=1024 count=100000 2> /dev/null
 
 # test the option 'f', 'fast'
 function test_fast {
-	"$mkfs" -f "$wtfs_img" 1> /dev/null 2> /dev/null
+	local stderr=`tempfile`
+
+	"$mkfs" -f "$wtfs_img" 1> /dev/null 2> "$stderr"
 	if (( $? != 0 )); then
+		cat "$stderr"
+		rm -rf "$stderr"
 		return 1
 	fi
 
+	rm -rf "$stderr"
 	return 0
 }
-test_fast || { why $? test_fast; clear_spot; return 1; }
 
 # test the option 'q', 'quiet'
 function test_quiet {
 	local stdout=`tempfile`
+	local stderr=`tempfile`
 
-	"$mkfs" -fq "$wtfs_img" 1> "$stdout" 2> /dev/null
+	"$mkfs" -fq "$wtfs_img" 1> "$stdout" 2> "$stderr"
 	if (( $? != 0 )); then
-		rm -rf "$stdout"
+		cat "$stderr"
+		rm -rf "$stdout" "$stderr"
 		return 2
 	elif [[ -n `cat "$stdout"` ]]; then
-		rm -rf "$stdout"
+		rm -rf "$stdout" "$stderr"
 		return 1
 	fi
 
-	rm -rf "$stdout"
+	rm -rf "$stdout" "$stderr"
 	return 0
 }
-test_quiet || { why $? test_quiet; clear_spot; return 1; }
 
 # test the option 'F', 'force'
 # udisks2 and gvfs-bin are required to mount and unmount disk image without sudo
@@ -100,8 +96,10 @@ function test_force {
 	local grep_loop='grep -Po /dev/loop\d+'
 
 	# skip the test if command 'udisksctl' and 'gvfs-mount' are missing
-	which udisksctl 1> /dev/null || return 0
-	which gvfs-mount 1> /dev/null || return 0
+	if ! which udisksctl gvfs-mount 1> /dev/null; then
+		printf "skip test_force\n"
+		return 0
+	fi
 
 	# first make an ext4 image and do mount
 	mkfs.ext4 -FFq "$wtfs_img" 2> /dev/null
@@ -123,21 +121,24 @@ function test_force {
 	# then do mkfs without '-F' again, there should be an error
 	"$mkfs" -f "$wtfs_img" 1> /dev/null 2> /dev/null
 	if (( $? == 0 )); then
-		$unmount_img 1> /dev/null && rm -rf "$stderr"
+		$unmount_img 1> /dev/null
+		rm -rf "$stderr"
 		return 1
 	fi
 
 	# then do mkfs with '-F', there should be no error
-	"$mkfs" -fF "$wtfs_img" 1> /dev/null 2> /dev/null
+	"$mkfs" -fF "$wtfs_img" 1> /dev/null 2> "$stderr"
 	if (( $? != 0 )); then
-		$unmount_img 1> /dev/null && rm -rf "$stderr"
+		cat "$stderr"
+		$unmount_img 1> /dev/null
+		rm -rf "$stderr"
 		return 1
 	fi
 
-	$unmount_img 1> /dev/null && rm -rf "$stderr"
+	$unmount_img 1> /dev/null
+	rm -rf "$stderr"
 	return 0
 }
-test_force || { why $? test_force; clear_spot; return 1; }
 
 # test the option 'i', 'imaps'
 function test_imaps {
@@ -145,21 +146,22 @@ function test_imaps {
 
 	# normal case
 	"$mkfs" -f -i1 "$wtfs_img" 1> /dev/null 2> "$stderr"
-	if [[ -n `cat "$stderr"` ]]; then
+	if (( $? != 0 )); then
+		cat "$stderr"
 		rm -rf "$stderr"
 		return 2
 	fi
 
 	# too many imaps
-	"$mkfs" -f -i100 "$wtfs_img" 1> /dev/null 2> "$stderr"
-	if [[ -z `cat "$stderr"` ]]; then
+	"$mkfs" -f -i100 "$wtfs_img" 1> /dev/null 2> /dev/null
+	if (( $? == 0 )); then
 		rm -rf "$stderr"
 		return 1
 	fi
 
 	# invalid imap number
-	"$mkfs" -f -i-2 "$wtfs_img" 1> /dev/null 2> "$stderr"
-	if [[ -z `cat "$stderr"` ]]; then
+	"$mkfs" -f -i-2 "$wtfs_img" 1> /dev/null 2> /dev/null
+	if (( $? == 0 )); then
 		rm -rf "$stderr"
 		return 1
 	fi
@@ -167,23 +169,22 @@ function test_imaps {
 	rm -rf "$stderr"
 	return 0
 }
-test_imaps || { why $? test_imaps; clear_spot; return 1; }
 
 # test the option 'L', 'label'
 function test_label {
 	local label=""
 	local label2=""
 	local stderr=`tempfile`
-	local read_label="dd if=$wtfs_img iflag=skip_bytes skip=4192 bs=32 count=1"
 
 	# normal case
 	label="This is a label"
 	"$mkfs" -f -L "$label" "$wtfs_img" 1> /dev/null 2> "$stderr"
-	if [[ -n `cat "$stderr"` ]]; then
+	if (( $? != 0 )); then
+		cat "$stderr"
 		rm -rf "$stderr"
 		return 2
 	fi
-	label2=`$read_label 2> /dev/null`
+	label2=`tail -c+4192 "$wtfs_img" | head -c32`
 	if [[ "$label" != "$label2" ]]; then
 		rm -rf "$stderr"
 		return 1
@@ -191,8 +192,9 @@ function test_label {
 
 	# label too long
 	label="This is a very very very very very very long label"
-	"$mkfs" -f -L "$label" "$wtfs_img" 1> /dev/null 2> "$stderr"
-	if [[ -z `cat "$stderr"` ]]; then
+	"$mkfs" -f -L "$label" "$wtfs_img" 1> /dev/null 2> /dev/null
+	if (( $? == 0 )); then
+		printf `tail -c+4193 "$wtfs_img" | head -c32`
 		rm -rf "$stderr"
 		return 1
 	fi
@@ -200,7 +202,6 @@ function test_label {
 	rm -rf "$stderr"
 	return 0
 }
-test_label || { why $? test_label; clear_spot; return 1; }
 
 # test the option 'U', 'uuid'
 # uuid is required to unparse binary uuid
@@ -208,30 +209,35 @@ function test_uuid {
 	local uuid=""
 	local uuid2=""
 	local stderr=`tempfile`
-	local read_uuid="dd if=$wtfs_img iflag=skip_bytes skip=4224 bs=16 count=1"
 	local unparse_uuid="uuid -d -FBIN -"
 	local grep_uuid='grep -Po [0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}'
 
 	# skip this test if command 'uuid' is missing
-	which uuid 1> /dev/null || return 0
+	if ! which uuid 1> /dev/null; then
+		printf "skip test_uuid\n"
+		return 0
+	fi
 
 	# normal case
 	uuid=`uuidgen`
 	"$mkfs" -f -U "$uuid" "$wtfs_img" 1> /dev/null 2> "$stderr"
-	if [[ -n `cat "$stderr"` ]]; then
+	if (( $? != 0 )); then
+		cat "$stderr"
 		rm -rf "$stderr"
 		return 2
 	fi
-	uuid2=`$read_uuid 2> /dev/null | $unparse_uuid | $grep_uuid`
+	uuid2=`tail -c+4225 "$wtfs_img" | head -c16 | $unparse_uuid | $grep_uuid`
 	if [[ "$uuid" != "$uuid2" ]]; then
+		echo $uuid
+		echo $uuid2
 		rm -rf "$stderr"
 		return 1
 	fi
 
 	# invalid UUID
 	uuid="12345678-90ab-cdef-ghij-klmnopqrstuv"
-	"$mkfs" -f -U "$uuid" "$wtfs_img" 1> /dev/null 2> "$stderr"
-	if [[ -z `cat "$stderr"` ]]; then
+	"$mkfs" -f -U "$uuid" "$wtfs_img" 1> /dev/null 2> /dev/null
+	if (( $? == 0 )); then
 		rm -rf "$stderr"
 		return 1
 	fi
@@ -239,20 +245,50 @@ function test_uuid {
 	rm -rf "$stderr"
 	return 0
 }
-test_uuid || { why $? test_uuid; clear_spot; return 1; }
 
 # test the option 'V', 'version'
 function test_version {
 	# no need
 	return 0
 }
-test_version || { why $? test_version; clear_spot; return 1; }
 
 # test the option 'h', 'help'
 function test_help {
 	# no need
 	return 0
 }
-test_help || { why $? test_help; clear_spot; return 1; }
+
+################################################################################
+# following is the execution of the test
+
+# the script must be called by test.sh, so check if the necessary variables
+# defined in test.sh are empty or not
+if [[ -z "$mkfs" ]] || [[ -z "$test_mkfs" ]] || [[ -z "$test_dir" ]]; then
+	return 1
+fi
+
+# now let's do test, first create a file of 100 MB
+wtfs_img=`tempfile`
+dd if=/dev/zero of="$wtfs_img" bs=1024 count=100000 2> /dev/null
+if (( $? != 0 )); then
+	printf "unable to create disk image file\n"
+	clear_spot
+	return 1
+fi
+
+tests=(
+	test_fast test_quiet test_force
+	test_imaps test_label test_uuid
+	test_version test_help
+)
+for part in ${tests[@]}; do
+	if ! "$part"; then
+		why $? "$part"
+		clear_spot
+		return 1
+	else
+		printf "$part passed\n"
+	fi
+done
 
 clear_spot

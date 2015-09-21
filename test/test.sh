@@ -44,11 +44,13 @@ function do_test {
 		printf "testing $1...\n"
 		( . "$3" )
 		if (( $? != 0 )); then
-			printf "$1 failed to pass the test\n"
+			printf "$1 failed to pass the test\n\n"
 			return 1
+		else
+			printf "\n"
 		fi
 	else
-		printf "$1 is not ready for the test\n"
+		printf "$1 is not ready for the test\n\n"
 	fi
 
 	return 0
