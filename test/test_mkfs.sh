@@ -35,6 +35,9 @@ function why {
 	3 )
 		printf "execution of a command failed in $2\n"
 		;;
+	* )
+		printf "unknown error $1 occurred in $2\n"
+		;;
 	esac
 }
 
@@ -119,7 +122,7 @@ function test_force {
 	fi
 
 	# then do mkfs without '-F' again, there should be an error
-	"$mkfs" -f "$wtfs_img" 1> /dev/null 2> /dev/null
+	"$mkfs" -fq "$wtfs_img" 2> /dev/null
 	if (( $? == 0 )); then
 		$unmount_img 1> /dev/null
 		rm -rf "$stderr"
@@ -127,7 +130,7 @@ function test_force {
 	fi
 
 	# then do mkfs with '-F', there should be no error
-	"$mkfs" -fF "$wtfs_img" 1> /dev/null 2> "$stderr"
+	"$mkfs" -fqF "$wtfs_img" 2> "$stderr"
 	if (( $? != 0 )); then
 		cat "$stderr"
 		$unmount_img 1> /dev/null
@@ -145,7 +148,7 @@ function test_imaps {
 	local stderr=`tempfile`
 
 	# normal case
-	"$mkfs" -f -i1 "$wtfs_img" 1> /dev/null 2> "$stderr"
+	"$mkfs" -fq -i1 "$wtfs_img" 2> "$stderr"
 	if (( $? != 0 )); then
 		cat "$stderr"
 		rm -rf "$stderr"
@@ -153,14 +156,14 @@ function test_imaps {
 	fi
 
 	# too many imaps
-	"$mkfs" -f -i100 "$wtfs_img" 1> /dev/null 2> /dev/null
+	"$mkfs" -fq -i100 "$wtfs_img" 2> /dev/null
 	if (( $? == 0 )); then
 		rm -rf "$stderr"
 		return 1
 	fi
 
 	# invalid imap number
-	"$mkfs" -f -i-2 "$wtfs_img" 1> /dev/null 2> /dev/null
+	"$mkfs" -fq -i-2 "$wtfs_img" 2> /dev/null
 	if (( $? == 0 )); then
 		rm -rf "$stderr"
 		return 1
@@ -178,7 +181,7 @@ function test_label {
 
 	# normal case
 	label="This is a label"
-	"$mkfs" -f -L "$label" "$wtfs_img" 1> /dev/null 2> "$stderr"
+	"$mkfs" -fq -L "$label" "$wtfs_img" 2> "$stderr"
 	if (( $? != 0 )); then
 		cat "$stderr"
 		rm -rf "$stderr"
@@ -192,7 +195,7 @@ function test_label {
 
 	# label too long
 	label="This is a very very very very very very long label"
-	"$mkfs" -f -L "$label" "$wtfs_img" 1> /dev/null 2> /dev/null
+	"$mkfs" -fq -L "$label" "$wtfs_img" 2> /dev/null
 	if (( $? == 0 )); then
 		printf `tail -c+4193 "$wtfs_img" | head -c32`
 		rm -rf "$stderr"
@@ -204,7 +207,7 @@ function test_label {
 }
 
 # test the option 'U', 'uuid'
-# uuid is required to unparse binary uuid
+# uuid is required to generate random UUID and unparse binary UUID
 function test_uuid {
 	local uuid=""
 	local uuid2=""
@@ -219,8 +222,8 @@ function test_uuid {
 	fi
 
 	# normal case
-	uuid=`uuidgen`
-	"$mkfs" -f -U "$uuid" "$wtfs_img" 1> /dev/null 2> "$stderr"
+	uuid=`uuid -v4`
+	"$mkfs" -fq -U "$uuid" "$wtfs_img" 2> "$stderr"
 	if (( $? != 0 )); then
 		cat "$stderr"
 		rm -rf "$stderr"
@@ -228,15 +231,15 @@ function test_uuid {
 	fi
 	uuid2=`tail -c+4225 "$wtfs_img" | head -c16 | $unparse_uuid | $grep_uuid`
 	if [[ "$uuid" != "$uuid2" ]]; then
-		echo $uuid
-		echo $uuid2
+		printf "$uuid\n"
+		printf "$uuid2\n"
 		rm -rf "$stderr"
 		return 1
 	fi
 
 	# invalid UUID
 	uuid="12345678-90ab-cdef-ghij-klmnopqrstuv"
-	"$mkfs" -f -U "$uuid" "$wtfs_img" 1> /dev/null 2> /dev/null
+	"$mkfs" -fq -U "$uuid" "$wtfs_img" 2> /dev/null
 	if (( $? == 0 )); then
 		rm -rf "$stderr"
 		return 1

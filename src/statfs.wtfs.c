@@ -39,6 +39,7 @@
 extern "C" {
 #endif /* __cplusplus */
 
+static int check_wtfs_instance(int fd);
 static int read_boot_block(int fd);
 static int read_super_block(int fd);
 static int read_inode_table(int fd);
@@ -51,48 +52,75 @@ int main(int argc, char * const * argv)
 	int fd = -1;
 	int ret;
 	char err_msg[BUF_SIZE], buf[BUF_SIZE];
-	const char * part = NULL;
+	const char * filename = NULL, * part = NULL;
 	struct stat stat;
 	const char * usage = "Usage: statfs.wtfs <FILE>\n"
-			     "FILE can be a block device containing a wtfs "
-			     "instance, or any file within a\n"
-			     "wtfs instance\n";
+			     "FILE can be a block device or image containing "
+			     "a wtfs instance, or any file within a wtfs "
+			     "instance\n";
 
 	if (argc != 2) {
-		fprintf(stderr, "%s", usage);
+		printf("%s", usage);
 		goto error;
 	}
+	filename = argv[1];
 
 	/* open and stat input file */
-	if ((fd = open(argv[1], O_RDONLY)) < 0) {
+	if ((fd = open(filename, O_RDONLY)) < 0) {
 		snprintf(err_msg, BUF_SIZE, "%s: cannot open '%s'",
-			argv[0], argv[1]);
+			argv[0], filename);
 		perror(err_msg);
 		goto error;
 	}
 	if (fstat(fd, &stat) < 0) {
 		snprintf(err_msg, BUF_SIZE, "%s: unable to stat '%s'",
-			argv[0], argv[1]);
+			argv[0], filename);
 		perror(err_msg);
 		goto error;
 	}
 
 	switch (stat.st_mode & S_IFMT) {
-	/* block device containing a wtfs instance */
-	case S_IFBLK:
-		break;
-
-	/* file within a wtfs instance */
+	/*
+	 * regular file
+	 * maybe within a wtfs instance, or an image containing a wtfs instance
+	 */
 	case S_IFREG:
+		ret = check_wtfs_instance(fd);
+		if (ret < 0) {
+			snprintf(err_msg, BUF_SIZE, "%s: unable to read '%s'",
+				argv[0], filename);
+			perror(err_msg);
+			goto error;
+		} else if (ret == 1) {
+			break;
+		}
+		/* fall-through if ret == 0 */
+
+	/* directory within a wtfs instance */
 	case S_IFDIR:
-	case S_IFLNK:
 		snprintf(buf, BUF_SIZE, "/dev/block/%u:%u",
 			major(stat.st_dev), minor(stat.st_dev));
 		close(fd);
-		if ((fd = open(buf, O_RDONLY)) < 0) {
+		filename = buf;
+		if ((fd = open(filename, O_RDONLY)) < 0) {
 			snprintf(err_msg, BUF_SIZE, "%s: cannot open '%s'",
-				argv[0], buf);
+				argv[0], filename);
 			perror(err_msg);
+			goto error;
+		}
+		/* fall-through again */
+
+	/* block device containing a wtfs instance */
+	case S_IFBLK:
+		ret = check_wtfs_instance(fd);
+		if (ret < 0) {
+			snprintf(err_msg, BUF_SIZE, "%s: unable to read '%s'",
+				argv[0], filename);
+			perror(err_msg);
+			goto error;
+		} else if (ret == 0) {
+			fprintf(stderr, "%s: no wtfs instance found\n",
+				argv[0]);
 			goto error;
 		}
 		break;
@@ -147,6 +175,33 @@ error:
 	return 1;
 }
 
+/*
+ * check if the file is an valid wtfs instance
+ * return 0 or 1 on success, error code otherwise
+ */
+static int check_wtfs_instance(int fd)
+{
+	struct wtfs_super_block sb;
+	ssize_t nread;
+
+	lseek(fd, WTFS_RB_SUPER * WTFS_BLOCK_SIZE, SEEK_SET);
+	nread = read(fd, &sb, sizeof(sb));
+	if (nread < 0) {
+		return -EIO;
+	}
+	if (nread < sizeof(sb)) {
+		return 0;
+	}
+	if (wtfs64_to_cpu(sb.magic) != WTFS_MAGIC) {
+		return 0;
+	}
+	if (!is_power_of_2(wtfs64_to_cpu(sb.block_size))) {
+		return 0;
+	}
+
+	return 1;
+}
+
 static int read_boot_block(int fd)
 {
 	/* do nothing */
@@ -162,10 +217,6 @@ static int read_super_block(int fd)
 	lseek(fd, WTFS_RB_SUPER * WTFS_BLOCK_SIZE, SEEK_SET);
 	if (read(fd, &sb, sizeof(sb)) != sizeof(sb)) {
 		return -EIO;
-	}
-
-	if (wtfs64_to_cpu(sb.magic) != WTFS_MAGIC) {
-		return -EPERM;
 	}
 
 	version = wtfs64_to_cpu(sb.version);
@@ -237,7 +288,7 @@ static int read_root_dir(int fd)
 	struct wtfs_dir_block root_blk;
 	int i;
 	uint64_t next = WTFS_DB_FIRST, inode_no;
-	char * filename = NULL;
+	const char * filename = NULL;
 
 	while (next != 0) {
 		lseek(fd, next * WTFS_BLOCK_SIZE, SEEK_SET);

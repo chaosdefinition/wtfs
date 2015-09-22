@@ -75,4 +75,8 @@ typedef __le64 wtfs64_t;
 #define wtfs_min3(a, b, c) min3((uint64_t)(a), (uint64_t)(b), (uint64_t)(c))
 #define wtfs_max3(a, b, c) max3((uint64_t)(a), (uint64_t)(b), (uint64_t)(c))
 
+#ifndef is_power_of_2
+# define is_power_of_2(n) ((n) != 0 && ((n) & ((n) - 1)) == 0)
+#endif /* is_power_of_2 */
+
 #endif /* WTFS_MACRO_UTILS_H_ */
