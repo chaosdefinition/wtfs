@@ -243,8 +243,9 @@ int main(int argc, char * const * argv)
 	blk_bitmaps = blocks / (WTFS_BITMAP_SIZE * 8);
 	min_data_blks = inode_bitmaps * WTFS_BLOCK_SIZE * 8;
 	/*
-	 * if the number of inode bitmap is more than 1, it indicates the
-	 * volume is big enough, so give it a restriction of minimum data blocks
+	 * if the number of inode bitmap is more than 1, it indicates that
+	 * the caller assumed the volume is big enough, so give it an extra
+	 * restriction of minimum data blocks
 	 */
 	if (inode_bitmaps > 1) {
 		if (blocks < inode_tables + blk_bitmaps + inode_bitmaps + 3 +

@@ -4,7 +4,7 @@
 
 适用于 Linux 的什么鬼文件系统
 
-在 [GPLv3](https://github.com/chaosdefinition/wtfs/blob/master/LICENSE.txt) 的许可下发布
+在 [GPLv3](LICENSE.txt) 的许可下发布
 
 ## 如何使用
 在编译之前，你需要安装好适当版本的构建要素和 Linux 内核头文件，以便能够构建内核模块（gcc 版本 >= 4.6 且 linux 版本 >= 3.11）。另外，构建 `mkfs.wtfs` 和 `statfs.wtfs` 现在需要 uuid 和 libmount 头文件了。
@@ -54,6 +54,15 @@ $ sudo rmmod wtfs
 除了将命令 `make` 替换为 `make debug` 之外，其他均按照上述步骤来做，这样生成的二进制文件就会包含调试符号信息，而且宏 `DEBUG` 也会被定义好。接下来你就可以使用外部的调试器——比如 gdb ——来调试 `mkfs.wtfs` 和 `statfs.wtfs` 了。
 
 然而，调试模块的方法就比较原始了，因为到目前为止我没有使用任何内核调试器。我一直都是看模块的输出日志来调试的……所以如果你有任何更加高级的方法，那就用吧。
+
+## 如何测试
+当你完成构建后，只需敲入命令 `make test` 即可。有没有用调试模式都可以。
+
+测试脚本需要使用下列二进制工具，但如果这些鬼不在你的 `PATH` 中也没有关系，在这种情况下，测试的某些部分会被跳过。
+
+* `udisks2` 包下的 `udisksctl`
+* `gvfs-bin` 包下的 `gvfs-mount`
+* `uuid` 包下的 `uuid`
 
 ## wtfs 物理磁盘布局
 版本 0.5.0

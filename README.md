@@ -4,9 +4,9 @@
 
 What the fxck filesystem for Linux
 
-Licensed under [GPLv3](https://github.com/chaosdefinition/wtfs/blob/master/LICENSE.txt)
+Licensed under [GPLv3](LICENSE.txt)
 
-中文说明见 [README.chs.md](https://github.com/chaosdefinition/wtfs/blob/master/README.chs.md)
+中文说明见 [README.chs.md](README.chs.md)
 
 ## How to use it
 Before compiling, you need to install build essentials and Linux kernel header
@@ -70,6 +70,18 @@ However, debugging the module is something more primitive since so far I haven't
  used any kernel debugger. What I do is merely have a look at module's output
  log... So if you have any more advanced method, please use it.
 
+## How to make a test
+Simply type the command `make test` after you build it. It doesn't matter
+ whether you are using debug mode or not.
+
+Following binary utilities are required by test scripts, but it doesn't matter
+ either if you don't have them in your `PATH`, in which case some parts of the
+ test will be skipped.
+
+* `udisksctl` from package `udisks2`
+* `gvfs-mount` from package `gvfs-bin`
+* `uuid` from package `uuid`
+
 ## Physical disk layout of wtfs
 Version 0.5.0
 
@@ -86,17 +98,17 @@ Boot loader block | Super block | 1st inode table | 1st block bitmap | 1st inode
 * Block 1 is super block.
 * Block 2 is the first inode table and the head of inode table chain. Because we
  use the last 8 bytes of a block as a pointer to another block, an inode table
- can contain a maximum of 63 inodes. The quantity of inode table is determined
- by the quantity of inode bitmap.
+ can contain a maximum of 63 inodes. The number of inode tables is determined by
+ the number of inode bitmaps.
 * Block 3 is the first block bitmap and the head of block bitmap chain. For the
- same reason, a block bitmap can state at most 4088 * 8 blocks. The quantity of
- block bitmap is determined by device size.
+ same reason, a block bitmap can state at most 4088 * 8 blocks. The number of
+ block bitmaps is determined by device size.
 * Block 4 is the first inode bitmap and the head of inode bitmap chain. For the
  same reason again, an inode bitmap can state at most 4088 * 8 inodes. The
- quantity of inode bitmap is one by default and cannot be changed before
- version 0.5.0. Since version 0.5.0, it can be set to a value within a
- reasonable range (bigger than zero and smaller than a specific value relating
- to device size) when doing format.
+ number of inode bitmaps is one by default and cannot be changed before version
+ 0.5.0. Since version 0.5.0, it can be set to a value within a reasonable range
+ (bigger than zero and smaller than a specific value relating to device size)
+ when doing format.
 * Blocks from 5 are data blocks. Data blocks also have their last 8 bytes to be
  a pointer except symbolic links. For symlinks, they always contain only one
  data block each, the first 2-byte-long word of which records the length of
@@ -104,4 +116,4 @@ Boot loader block | Super block | 1st inode table | 1st block bitmap | 1st inode
  of symlink content is therefore 4094 bytes.
 
 ## Contact me
-Please send me email if you have any questions or suggestions: chaosdefinition@hotmail.com
+Please send me email if you have any question or suggestion: chaosdefinition@hotmail.com
