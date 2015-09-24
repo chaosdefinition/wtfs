@@ -81,6 +81,7 @@ Following binary utilities are required by test scripts, but it doesn't matter
 * `udisksctl` from package `udisks2`
 * `gvfs-mount` from package `gvfs-bin`
 * `uuid` from package `uuid`
+* `bc` from package `bc`
 
 ## Physical disk layout of wtfs
 Version 0.5.0

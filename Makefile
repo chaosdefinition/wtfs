@@ -80,9 +80,7 @@ test:
 	@bash "$(TEST)/test.sh"
 
 # clean
-clean:
-	@$(MAKE) clean_programs
-	@$(MAKE) clean_module KV=$(shell uname -r)
+clean: clean_programs clean_module
 
 clean_programs:
 	@$(ECHO) "  CLEAN   $(PWD)/$(BUILD)/mkfs.wtfs"

@@ -63,6 +63,7 @@ $ sudo rmmod wtfs
 * `udisks2` 包下的 `udisksctl`
 * `gvfs-bin` 包下的 `gvfs-mount`
 * `uuid` 包下的 `uuid`
+* `bc` 包下的 `bc`
 
 ## wtfs 物理磁盘布局
 版本 0.5.0

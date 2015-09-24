@@ -6,13 +6,14 @@ env:
 before_install:
   - KV="3.13.0-55-generic"
   - sudo apt-get update -qq
-  - sudo apt-get install -y -qq "linux-headers-$KV" # for building kernel module
-  - sudo apt-get install -y -qq uuid-dev libmount-dev # for building programs
-  - sudo apt-get install -y -qq gvfs-bin uuid # for test
+  # for building kernel module
+  - sudo apt-get install -y -qq "linux-headers-$KV"
+  # for building programs
+  - sudo apt-get install -y -qq uuid-dev libmount-dev
+  # for test
+  - sudo apt-get install -y -qq gvfs-bin uuid bc
 script:
-  - make module KV="$KV"
-  - make programs
+  - make KV="$KV"
   - make test
 after_script:
-  - make clean_programs
-  - make clean_module KV="$KV"
+  - make clean KV="$KV"

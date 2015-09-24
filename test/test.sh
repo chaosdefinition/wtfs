@@ -21,18 +21,18 @@
 # along with wtfs.  If not, see <http://www.gnu.org/licenses/>.
 
 # directories
-test_dir=`dirname $0`
-build_dir="$test_dir/../build"
+readonly test_dir=`dirname $0`
+readonly build_dir="$test_dir/../build"
 
 # test takers
-mkfs="$build_dir/mkfs.wtfs"
-statfs="$build_dir/statfs.wtfs"
-module="$build_dir/wtfs.ko"
+readonly mkfs="$build_dir/mkfs.wtfs"
+readonly statfs="$build_dir/statfs.wtfs"
+readonly module="$build_dir/wtfs.ko"
 
 # test makers
-test_mkfs="$test_dir/test_mkfs.sh"
-test_statfs="$test_dir/test_statfs.sh"
-test_module="$test_dir/test_module.sh"
+readonly test_mkfs="$test_dir/test_mkfs.sh"
+readonly test_statfs="$test_dir/test_statfs.sh"
+readonly test_module="$test_dir/test_module.sh"
 
 # do test
 #
@@ -59,7 +59,7 @@ function do_test {
 # do tests
 result=0
 do_test "mkfs.wtfs" "$mkfs" "$test_mkfs"
-(( $? != 0 )) && result=1
+(( $? != 0 )) && exit 1
 do_test "statfs.wtfs" "$statfs" "$test_statfs"
 (( $? != 0 )) && result=1
 do_test "wtfs module" "$module" "$test_module"
