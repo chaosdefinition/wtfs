@@ -32,6 +32,7 @@ function what {
 		;;
 	4 )
 		printf "skip $2\n"
+		(( ++skipped ))
 		return 0
 		;;
 	1 )
@@ -57,6 +58,7 @@ function clear_spot {
 		unset wtfs_img
 	fi
 	unset tests
+	unset skipped
 }
 
 ################################################################################
@@ -93,16 +95,16 @@ function test_quiet {
 # test the option 'F', 'force'
 # udisks2 and gvfs-bin are required to mount and unmount disk image without sudo
 function test_force {
+	# skip the test if command 'udisksctl' and 'gvfs-mount' are missing
+	if ! which udisksctl gvfs-mount > /dev/null; then
+		return 4
+	fi
+
 	local loop_dev=""
 	local setup_loop="udisksctl loop-setup --file=$wtfs_img"
 	local mount_img=""
 	local unmount_img=""
 	local grep_loop='grep -Po /dev/loop\d+'
-
-	# skip the test if command 'udisksctl' and 'gvfs-mount' are missing
-	if ! which udisksctl gvfs-mount > /dev/null; then
-		return 4
-	fi
 
 	# first make an ext4 image and do mount
 	mkfs.ext4 -FFq "$wtfs_img" 2> /dev/null
@@ -188,15 +190,15 @@ function test_label {
 # test the option 'U', 'uuid'
 # uuid is required to generate random UUID and unparse binary UUID
 function test_uuid {
-	local uuid=""
-	local uuid2=""
-	local unparse_uuid="uuid -d -FBIN -"
-	local grep_uuid='grep -Po [\dA-Fa-f]{8}(-[\dA-Fa-f]{4}){3}-[\dA-Fa-f]{12}'
-
 	# skip this test if command 'uuid' is missing
 	if ! which uuid > /dev/null; then
 		return 4
 	fi
+
+	local uuid=""
+	local uuid2=""
+	local unparse_uuid="uuid -d -FBIN -"
+	local grep_uuid='grep -Po [\dA-Fa-f]{8}(-[\dA-Fa-f]{4}){3}-[\dA-Fa-f]{12}'
 
 	# normal case
 	uuid=`uuid -v4`
@@ -256,6 +258,7 @@ tests=(
 	test_imaps test_label test_uuid
 	test_version test_help
 )
+skipped=0
 for part in ${tests[@]}; do
 	"$part"
 	what $? "$part"
@@ -264,6 +267,13 @@ for part in ${tests[@]}; do
 		return 1
 	fi
 done
+
+# skipping more than half of all test parts is also regarded as failure
+if (( skipped * 2 >= ${#tests} )); then
+	printf "too many parts of the test skipped\n"
+	clear_spot
+	return 1
+fi
 
 clear_spot
 return 0

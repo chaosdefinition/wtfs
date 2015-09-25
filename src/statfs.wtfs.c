@@ -176,7 +176,7 @@ error:
 }
 
 /*
- * check if the file is an valid wtfs instance
+ * check if the file is a valid wtfs instance
  * return 0 or 1 on success, error code otherwise
  */
 static int check_wtfs_instance(int fd)

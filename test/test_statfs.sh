@@ -24,7 +24,11 @@
 #
 # $1: hex integer without '0x' or '0X'
 function hex_to_dec {
-	printf "ibase=16; ${1^^}\n" | BC_LINE_LENGTH=0 bc
+	if ! which bc > /dev/null; then
+		printf $(( 0x$1 ))
+	else
+		printf "ibase=16; ${1^^}\n" | BC_LINE_LENGTH=0 bc
+	fi
 }
 
 # read a little endian binary integer from a file
@@ -54,6 +58,7 @@ function what {
 		;;
 	4 )
 		printf "skip $2\n"
+		(( ++skipped ))
 		return 0
 		;;
 	1 )
@@ -79,6 +84,7 @@ function clear_spot {
 	unset label
 	unset uuid
 	unset tests
+	unset skipped
 }
 
 ################################################################################
@@ -128,7 +134,7 @@ function test_magic {
 # $1: regex to match the number
 # $2: read_integer offset
 # $3: read_integer length
-function __test_equal_decimal {
+function __test_equal_int {
 	local grep_number="grep -Po $1"
 
 	local expected=`read_integer "$wtfs_img" $2 $3`
@@ -144,49 +150,46 @@ function __test_equal_decimal {
 
 # test block size in output
 function test_blk_size {
-	__test_equal_decimal '(?<=block\ssize:\s{13})\d+' 4112 8
+	__test_equal_int '(?<=block\ssize:\s{13})\d+' 4112 8
 	return $?
 }
 
 # test total blocks in output
 function test_total_blks {
-	__test_equal_decimal '(?<=total\sblocks:\s{11})\d+' 4120 8
+	__test_equal_int '(?<=total\sblocks:\s{11})\d+' 4120 8
 	return $?
 }
 
 # test itable stuffs in output
 function test_itables {
-	__test_equal_decimal '(?<=first\sinode\stable:\s{6})\d+' 4128 8
-	(( $? != 0 )) && return $?
-	__test_equal_decimal '(?<=total\sinode\stables:\s{5})\d+' 4136 8
+	__test_equal_int '(?<=first\sinode\stable:\s{6})\d+' 4128 8 || return $?
+	__test_equal_int '(?<=total\sinode\stables:\s{5})\d+' 4136 8
 	return $?
 }
 
 # test bmap stuffs in output
 function test_bmaps {
-	__test_equal_decimal '(?<=first\sblock\sbitmap:\s{5})\d+' 4144 8
-	(( $? != 0 )) && return $?
-	__test_equal_decimal '(?<=total\sblock\sbitmaps:\s{4})\d+' 4152 8
+	__test_equal_int '(?<=first\sblock\sbitmap:\s{5})\d+' 4144 8 || return $?
+	__test_equal_int '(?<=total\sblock\sbitmaps:\s{4})\d+' 4152 8
 	return $?
 }
 
 # test imap stuffs in output
 function test_imaps {
-	__test_equal_decimal '(?<=first\sinode\sbitmap:\s{5})\d+' 4160 8
-	(( $? != 0 )) && return $?
-	__test_equal_decimal '(?<=total\sinode\sbitmaps:\s{4})\d+' 4168 8
+	__test_equal_int '(?<=first\sinode\sbitmap:\s{5})\d+' 4160 8 || return $?
+	__test_equal_int '(?<=total\sinode\sbitmaps:\s{4})\d+' 4168 8
 	return $?
 }
 
 # test total inodes in output
 function test_total_inodes {
-	__test_equal_decimal '(?<=total\sinodes:\s{11})\d+' 4176 8
+	__test_equal_int '(?<=total\sinodes:\s{11})\d+' 4176 8
 	return $?
 }
 
 # test free blocks in output
 function test_free_blks {
-	__test_equal_decimal '(?<=free\sblocks:\s{12})\d+' 4184 8
+	__test_equal_int '(?<=free\sblocks:\s{12})\d+' 4184 8
 	return $?
 }
 
@@ -252,7 +255,7 @@ fi
 
 # do format on the file
 label="test_statfs"
-uuid=`uuid -v4`
+uuid="8c859f2f-c4c6-4d2d-8ed7-86ce9b3864a3"
 version=""
 "$mkfs" -fq -L "$label" -U "$uuid" "$wtfs_img" 2> /dev/null
 
@@ -270,6 +273,7 @@ tests=(
 	test_itables test_bmaps	test_imaps test_total_inodes test_free_blks
 	test_label test_uuid test_root_dir
 )
+skipped=0
 for part in ${tests[@]}; do
 	"$part"
 	what $? "$part"
@@ -278,6 +282,13 @@ for part in ${tests[@]}; do
 		return 1
 	fi
 done
+
+# skipping more than half of all test parts is also regarded as failure
+if (( skipped * 2 >= ${#tests} )); then
+	printf "too many parts of the test skipped\n"
+	clear_spot
+	return 1
+fi
 
 clear_spot
 return 0

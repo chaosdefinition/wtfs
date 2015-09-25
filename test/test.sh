@@ -51,6 +51,7 @@ function do_test {
 		fi
 	else
 		printf "$1 is not ready for the test\n\n"
+		return 1
 	fi
 
 	return 0
