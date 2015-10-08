@@ -50,6 +50,12 @@ $ sudo umount ~/wtfs-test
 $ sudo rmmod wtfs
 ```
 
+如果你想看 `mkfs.wtfs` 的具体用法，执行下面的命令。
+```Shell
+# mkfs.wtfs 的手册页
+$ man man/zh_CN/man8/mkfs.wtfs.8
+```
+
 ## 如何调试
 除了将命令 `make` 替换为 `make debug` 之外，其他均按照上述步骤来做，这样生成的二进制文件就会包含调试符号信息，而且宏 `DEBUG` 也会被定义好。接下来你就可以使用外部的调试器——比如 gdb ——来调试 `mkfs.wtfs` 和 `statfs.wtfs` 了。
 

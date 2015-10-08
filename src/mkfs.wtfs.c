@@ -107,6 +107,9 @@ int main(int argc, char * const * argv)
 	struct stat stat;
 
 	const char * usage = "Usage: mkfs.wtfs [OPTIONS] <DEVICE>\n"
+			     "\n"
+			     "Make a wtfs filesystem.\n"
+			     "\n"
 			     "Options:\n"
 			     "  -f, --fast            quick format\n"
 			     "  -q, --quiet           quiet mode\n"
@@ -116,6 +119,8 @@ int main(int argc, char * const * argv)
 			     "  -U, --uuid=UUID       set filesystem UUID\n"
 			     "  -V, --version         show version and exit\n"
 			     "  -h, --help            show this message and exit\n"
+			     "\n"
+			     "See mkfs.wtfs(8) for more details.\n"
 			     "\n";
 
 	/* parse arguments */
@@ -245,7 +250,7 @@ int main(int argc, char * const * argv)
 	/*
 	 * if the number of inode bitmap is more than 1, it indicates that
 	 * the caller assumed the volume is big enough, so give it an extra
-	 * restriction of minimum data blocks
+	 * limit of minimum number of data blocks
 	 */
 	if (inode_bitmaps > 1) {
 		if (blocks < inode_tables + blk_bitmaps + inode_bitmaps + 3 +

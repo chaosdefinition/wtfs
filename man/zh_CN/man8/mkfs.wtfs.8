@@ -1,0 +1,76 @@
+.\"
+.\" Simplified Chinese Man page for mkfs.wtfs
+.\"
+.\" Copyright (C) 2015 Chaos Shen
+.\"
+.\" This file is part of wtfs, What the fxck filesystem.  You may take
+.\" the letter 'f' from, at your option, either 'fxck' or 'filesystem'.
+.\"
+.\" wtfs is free software: you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, either version 3 of the License, or
+.\" (at your option) any later version.
+.\"
+.\" wtfs is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public License
+.\" along with wtfs.  If not, see <http://www.gnu.org/licenses/>.
+.\"
+.\"*************************** title *******************************************
+.TH MKFS.WTFS 8 2015-10-08 Linux "什么鬼文件系统工具"
+.\"*************************** name ********************************************
+.SH "名称"
+mkfs.wtfs \- 创建一个什么鬼文件系统
+.\"*************************** synopsis ****************************************
+.SH "大纲"
+\fBmkfs.wtfs\fR [\fI选项\fR] \fI设备\fR
+.\"*************************** description *************************************
+.SH "描述"
+\fBmkfs.wtfs\fR 根据指定的\fI选项\fR，
+在\fI设备\fR上创建一个什么鬼文件系统。
+.PP
+\fI设备\fR可以是一个块设备（例如 \fI/dev/sda4\fR）
+或者一个常规文件（作为文件系统镜像）。
+.\"*************************** options *****************************************
+.SH "选项"
+.TP
+\fB\-f\fR, \fB\-\-fast\fR
+执行快速格式化。这会跳过数据块的清零。
+.TP
+\fB\-q\fR, \fB\-\-quiet\fR
+静默执行；stdout 不会有任何输出，但错误会被写到 stderr。
+.TP
+\fB\-F\fR, \fB\-\-force\fR
+强制执行，即使\fI设备\fR已经挂载。
+.TP
+\fB\-i\fR, \fB\-\-imaps\fR=\fIIMAPS\fR
+指定索引节点位图的个数为 \fIIMAPS\fR。有效值的范围是 1 到一个跟设备大小相关的值。如果 \fIIMAPS\fR 大于 1，则会加入最小数据块数的限制。如果未指定，则 \fBmkfs.wtfs\fR 会使用 1 作为默认值。
+.TP
+\fB\-L\fR, \fB\-\-label\fR=\fILABEL\fR
+设置文件系统标签为 \fILABEL\fR。文件系统标签的最大长度为 32 字节（不含）。
+.TP
+\fB\-U\fR, \fB\-\-uuid\fR=\fIUUID\fR
+设置文件系统 UUID 为 \fIUUID\fR。\fIUUID\fR 应该是 \fI8\-4\-4\-4\-12\fR 的格式，一共 36 个字符（包括 4 个连字符）。如果未指定，则 \fBmkfs.wtfs\fR 会自己生成一个随机的 UUID。
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+显示 \fBmkfs.wtfs\fR 的版本信息并退出。
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+显示帮助文本并退出。
+.\"*************************** exit status *************************************
+.SH "退出值"
+\fBmkfs.wtfs\fR 返回 0 表示成功，或者 1 表示发生错误。
+.\"*************************** bugs ********************************************
+.SH "漏洞"
+如果你发现任何漏洞，请在 GitHub（见下）上打开一个 issue 描述这个问题。
+.\"*************************** availability ************************************
+.SH "可获性"
+\fBmkfs.wtfs\fR 是 wtfs 的一部分，可在 GitHub 
+(https://github.com/chaosdefinition/wtfs) 上获得。
+.\"*************************** see also ****************************************
+.SH "参见"
+.BR mkfs (8),
+.BR statfs.wtfs (8)

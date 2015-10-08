@@ -1,0 +1,84 @@
+.\"
+.\" Man page for mkfs.wtfs
+.\"
+.\" Copyright (C) 2015 Chaos Shen
+.\"
+.\" This file is part of wtfs, What the fxck filesystem.  You may take
+.\" the letter 'f' from, at your option, either 'fxck' or 'filesystem'.
+.\"
+.\" wtfs is free software: you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, either version 3 of the License, or
+.\" (at your option) any later version.
+.\"
+.\" wtfs is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public License
+.\" along with wtfs.  If not, see <http://www.gnu.org/licenses/>.
+.\"
+.\"*************************** title *******************************************
+.TH MKFS.WTFS 8 2015-10-08 Linux "What the fxck filesystem utils"
+.\"*************************** name ********************************************
+.SH NAME
+mkfs.wtfs \- create a wtfs filesystem
+.\"*************************** synopsis ****************************************
+.SH SYNOPSIS
+\fBmkfs.wtfs\fR [\fIOPTIONS\fR] \fIDEVICE\fR
+.\"*************************** description *************************************
+.SH DESCRIPTION
+\fBmkfs.wtfs\fR creates a wtfs filesystem on \fIDEVICE\fR with \fIOPTIONS\fR
+specified.
+.PP
+The \fIDEVICE\fR can be a block device (e.g. \fI/dev/sda4\fR) or a regular file
+(as a filesystem image).
+.\"*************************** options *****************************************
+.SH OPTIONS
+.TP
+\fB\-f\fR, \fB\-\-fast\fR
+Perform quick format. This will skip zeroing of data blocks.
+.TP
+\fB\-q\fR, \fB\-\-quiet\fR
+Quiet execution; no output to stdout occurs at all, but errors will be written
+to stderr.
+.TP
+\fB\-F\fR, \fB\-\-force\fR
+Force execution even if the \fIDEVICE\fR is already mounted.
+.TP
+\fB\-i\fR, \fB\-\-imaps\fR=\fIIMAPS\fR
+Specify the number of inode bitmaps to be \fIIMAPS\fR. A valid value ranges from
+1 to a specific value relating to device size. If \fIIMAPS\fR is bigger than 1,
+an extra limit of minimum number of data blocks will be added. If omitted,
+\fBmkfs.wtfs\fR will use 1 as the default value.
+.TP
+\fB\-L\fR, \fB\-\-label\fR=\fILABEL\fR
+Set the filesystem label as \fILABEL\fR. The maximum length of the filesystem
+label is 32 bytes (not included).
+.TP
+\fB\-U\fR, \fB\-\-uuid\fR=\fIUUID\fR
+Set the filesystem UUID as \fIUUID\fR. The \fIUUID\fR should be in the form of
+\fI8\-4\-4\-4\-12\fR for a total of 36 characters (including 4 hyphens). If
+omitted, \fBmkfs.wtfs\fR will generate a random UUID by itself.
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Display the version information of \fBmkfs.wtfs\fR and exit.
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Display the help text and exit.
+.\"*************************** exit status *************************************
+.SH "EXIT STATUS"
+\fBmkfs.wtfs\fR returns 0 indicating success, or 1 indicating an error occurred.
+.\"*************************** bugs ********************************************
+.SH BUGS
+If you find any bug, please open an issue on GitHub (see blow) describing the
+problem.
+.\"*************************** availability ************************************
+.SH AVAILABILITY
+\fBmkfs.wtfs\fR is part of wtfs and is available from GitHub
+(https://github.com/chaosdefinition/wtfs).
+.\"*************************** see also ****************************************
+.SH "SEE ALSO"
+.BR mkfs (8),
+.BR statfs.wtfs (8)

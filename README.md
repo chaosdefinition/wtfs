@@ -6,7 +6,7 @@ What the fxck filesystem for Linux
 
 Licensed under [GPLv3](LICENSE.txt)
 
-中文说明见 [README.chs.md](README.chs.md)
+中文说明见 [README.zh_CN.md](README.zh_CN.md)
 
 ## How to use it
 Before compiling, you need to install build essentials and Linux kernel header
@@ -58,6 +58,12 @@ To unmount an instance and remove the module from kernel, do following.
 ```Shell
 $ sudo umount ~/wtfs-test
 $ sudo rmmod wtfs
+```
+
+If you want to see specific usage of `mkfs.wtfs`, do following.
+```Shell
+# manpage for mkfs.wtfs
+$ man man/man8/mkfs.wtfs.8
 ```
 
 ## How to debug
