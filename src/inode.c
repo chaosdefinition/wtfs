@@ -417,54 +417,17 @@ static int wtfs_symlink(struct inode * dir_vi, struct dentry * dentry,
  */
 static int wtfs_readlink(struct dentry * dentry, char __user * buf, int length)
 {
-	struct nameidata nd;
-	void * cookie = NULL;
-	char * path = NULL;
-	size_t real_length;
-	int ret = -EINVAL;
+	int ret;
 
 	wtfs_debug("readlink called, file '%s' of inode %lu\n",
 		dentry->d_name.name, dentry->d_inode->i_ino);
 
-	/* follow link */
-	nd.depth = 0;
-	cookie = wtfs_follow_link(dentry, &nd);
-	if (IS_ERR(cookie)) {
-		ret = PTR_ERR(cookie);
-		cookie = NULL;
-		goto error;
+	ret = generic_readlink(dentry, buf, length);
+	if (IS_ERR_VALUE(ret)) {
+		return ret;
 	}
 
-	/* check length */
-	path = nd_get_link(&nd);
-	if (IS_ERR(path)) {
-		ret = PTR_ERR(path);
-		goto error;
-	}
-	real_length = strnlen(path, WTFS_SYMLINK_MAX);
-	if (real_length >= length) {
-		ret = -EFAULT;
-		goto error;
-	}
-
-	/* do copy to userspace */
-	if (copy_to_user(buf, path, real_length) != 0) {
-		ret = -EIO;
-		goto error;
-	}
-	buf[real_length] = '\0';
-
-	wtfs_debug("'%s' -> '%s' of length %ld\n", dentry->d_name.name, buf,
-		real_length);
-
-	/* release cookie */
-	wtfs_put_link(dentry, &nd, cookie);
-	return real_length;
-
-error:
-	if (cookie != NULL) {
-		wtfs_put_link(dentry, &nd, cookie);
-	}
+	wtfs_debug("'%s' -> '%s' of length %d\n", dentry->d_name.name, buf, ret);
 	return ret;
 }
 
