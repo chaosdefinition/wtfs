@@ -198,7 +198,7 @@ function test_uuid {
 	local uuid=""
 	local uuid2=""
 	local unparse_uuid="uuid -d -FBIN -"
-	local grep_uuid='grep -Po [\dA-Fa-f]{8}(-[\dA-Fa-f]{4}){3}-[\dA-Fa-f]{12}'
+	local grep_uuid='grep -Pio [\da-f]{8}(-[\da-f]{4}){3}-[\da-f]{12}'
 
 	# normal case
 	uuid=`uuid -v4`
@@ -261,11 +261,7 @@ tests=(
 skipped=0
 for part in ${tests[@]}; do
 	"$part"
-	what $? "$part"
-	if (( $? != 0 )); then
-		clear_spot
-		return 1
-	fi
+	what $? "$part" || { clear_spot; return 1; }
 done
 
 # skipping more than half of all test parts is also regarded as failure

@@ -276,11 +276,7 @@ tests=(
 skipped=0
 for part in ${tests[@]}; do
 	"$part"
-	what $? "$part"
-	if (( $? != 0 )); then
-		clear_spot
-		return 1
-	fi
+	what $? "$part" || { clear_spot; return 1; }
 done
 
 # skipping more than half of all test parts is also regarded as failure
