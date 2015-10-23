@@ -177,7 +177,8 @@ static int wtfs_write_inode(struct inode * vi, struct writeback_control * wbc)
 		inode->dir_entry_count = cpu_to_wtfs64(info->dir_entry_count);
 		break;
 
-	case S_IFREG: case S_IFLNK:
+	case S_IFREG:
+	case S_IFLNK:
 		inode->file_size = cpu_to_wtfs64(i_size_read(vi));
 		break;
 

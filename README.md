@@ -92,11 +92,7 @@ Following binary utilities are required by test scripts, but it doesn't matter
 ## Physical disk layout of wtfs
 Version 0.6.0
 
-Block 0 | Block 1 | Block 2 | Block 3 | Block 4 | Block 5... |
-------- | ------- | ------- | ------- | ------- | ---------- |
-Boot loader block | Super block | 1st inode table | 1st block bitmap | 1st inode bitmap | Data block...
- | | 2nd inode table | 2nd block bitmap | 2nd inode bitmap |
- | | ... | ... | ... |
+![wtfs layout](http://chaosdefinition.me/img/wtfs-layout.png)
 
 * Size of each block is 4096 bytes.
 * Size of each inode is 64 bytes.

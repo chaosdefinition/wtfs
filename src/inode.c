@@ -275,7 +275,8 @@ static int wtfs_rename(struct inode * old_dir, struct dentry * old_dentry,
 			}
 			break;
 
-		case S_IFREG: case S_IFLNK:
+		case S_IFREG:
+		case S_IFLNK:
 			if ((ret = wtfs_unlink(new_dir, new_dentry)) < 0) {
 				return ret;
 			}
