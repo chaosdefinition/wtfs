@@ -1,6 +1,7 @@
 # wtfs
 [![wtfs 版本](https://badge.fury.io/gh/chaosdefinition%2Fwtfs.svg)](http://badge.fury.io/gh/chaosdefinition%2Fwtfs)
 [![构建状态](https://travis-ci.org/chaosdefinition/wtfs.svg)](https://travis-ci.org/chaosdefinition/wtfs)
+[![GitHub 许可证](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE.txt)
 
 适用于 Linux 的什么鬼文件系统
 
