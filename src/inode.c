@@ -27,6 +27,7 @@
 #include <linux/buffer_head.h>
 #include <linux/err.h>
 #include <linux/slab.h>
+#include <linux/version.h>
 
 #include "wtfs.h"
 
@@ -47,9 +48,19 @@ static int wtfs_getattr(struct vfsmount * mnt, struct dentry * dentry,
 static int wtfs_symlink(struct inode * dir_vi, struct dentry * dentry,
 	const char * symname);
 static int wtfs_readlink(struct dentry * dentry, char __user * buf, int length);
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 2, 0)
 static void * wtfs_follow_link(struct dentry * dentry, struct nameidata * nd);
 static void wtfs_put_link(struct dentry * dentry, struct nameidata * nd,
 	void * cookie);
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
+static const char * wtfs_follow_link(struct dentry * dentry, void ** cookie);
+static void wtfs_put_link(struct inode * vi, void * cookie);
+#else
+static const char * wtfs_get_link(struct dentry * dentry, struct inode * vi,
+	struct delayed_call * done);
+static void wtfs_put_link(void * cookie);
+#endif
 
 /* inode operations for directory */
 const struct inode_operations wtfs_dir_inops = {
@@ -73,8 +84,14 @@ const struct inode_operations wtfs_file_inops = {
 /* inode operations for symbolic link */
 const struct inode_operations wtfs_symlink_inops = {
 	.readlink = wtfs_readlink,
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
 	.follow_link = wtfs_follow_link,
 	.put_link = wtfs_put_link,
+#else
+	.get_link = wtfs_get_link,
+#endif
+
 	.setattr = wtfs_setattr,
 	.getattr = wtfs_getattr,
 };
@@ -432,19 +449,46 @@ static int wtfs_readlink(struct dentry * dentry, char __user * buf, int length)
 	return ret;
 }
 
-/********************* implementation of follow_link **************************/
+/********************* implementation of follow_link/get_link *****************/
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 2, 0)
 /*
  * routine called by the VFS to follow a symbolic link to the inode it points to
  *
  * @dentry: dentry of the symlink file to follow
  * @nd: nameidata structure to record the symlink path and depth
  *
- * return: buffer_head of the symlink block
+ * return: buffer_head of the symlink block on success, error code otherwise
  */
 static void * wtfs_follow_link(struct dentry * dentry, struct nameidata * nd)
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
+/*
+ * routine called by the VFS to follow a symbolic link to the inode it points to
+ *
+ * @dentry: dentry of the symlink file to follow
+ * @cookie: address to record buffer_head of the symlink block to release
+ *
+ * return: the symlink path on success, error code otherwise
+ */
+static const char * wtfs_follow_link(struct dentry * dentry, void ** cookie)
+#else
+/*
+ * routine called by the VFS to get a symbolic link to the inode it points to
+ *
+ * @dentry: dentry of the symlink file to follow
+ * @vi: the VFS inode of the symlink file
+ * @done: structure to record callback function to release the symlink block
+ *
+ * return: the symlink path on success, error code otherwise
+ */
+static const char * wtfs_get_link(struct dentry * dentry, struct inode * vi,
+	struct delayed_call * done)
+#endif
 {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
 	struct inode * vi = dentry->d_inode;
+#endif
+
 	struct super_block * vsb = vi->i_sb;
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
 	struct wtfs_symlink_block * symlink = NULL;
@@ -464,9 +508,16 @@ static void * wtfs_follow_link(struct dentry * dentry, struct nameidata * nd)
 	symlink = (struct wtfs_symlink_block *)bh->b_data;
 
 	/* set link */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 2, 0)
 	nd_set_link(nd, symlink->path);
-
 	return bh;
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
+	*cookie = bh;
+	return symlink->path;
+#else
+	set_delayed_call(done, wtfs_put_link, bh);
+	return symlink->path;
+#endif
 
 error:
 	if (bh != NULL) {
@@ -477,6 +528,7 @@ error:
 
 /********************* implementation of put_link *****************************/
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 2, 0)
 /*
  * routine called by the VFS to release resources allocated by follow_link()
  *
@@ -486,6 +538,23 @@ error:
  */
 static void wtfs_put_link(struct dentry * dentry, struct nameidata * nd,
 	void * cookie)
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
+/*
+ * routine called by the VFS to release resources allocated by follow_link()
+ *
+ * @vi: the VFS inode of the symlink file
+ * @cookie: buffer_head of the symlink block to release
+ */
+static void wtfs_put_link(struct inode * vi, void * cookie)
+#else
+/*
+ * routine called by the VFS to release resources allocated by get_link()
+ * note: this is no longer part of the inode_operations for symlink files
+ *
+ * @cookie: buffer_head of the symlink block to release
+ */
+static void wtfs_put_link(void * cookie)
+#endif
 {
 	wtfs_debug("put_link called\n");
 

@@ -27,6 +27,7 @@
 #include <linux/buffer_head.h>
 #include <linux/blkdev.h>
 #include <linux/slab.h>
+#include <linux/writeback.h>
 
 #include "wtfs.h"
 
