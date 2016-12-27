@@ -1,0 +1,16 @@
+# binaries
+*.o
+*.ko
+*.wtfs
+
+# generated files of kernel module building
+*.mod.c
+*.o.cmd
+*.ko.cmd
+.tmp_versions/
+Module.symvers
+modules.order
+
+# Sublime Text project files
+*.sublime-project
+*.sublime-workspace

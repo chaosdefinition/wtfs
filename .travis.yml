@@ -1,0 +1,19 @@
+language: c
+compiler: gcc
+env:
+  global:
+  - TERM=dumb
+before_install:
+  - KV="3.13.0-55-generic"
+  - sudo apt-get update -qq
+  # for building kernel module
+  - sudo apt-get install -y -qq "linux-headers-$KV"
+  # for building programs
+  - sudo apt-get install -y -qq uuid-dev libmount-dev
+  # for test
+  - sudo apt-get install -y -qq gvfs-bin uuid bc
+script:
+  - make KV="$KV"
+  - make test
+after_script:
+  - make clean KV="$KV"
