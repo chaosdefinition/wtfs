@@ -233,7 +233,7 @@ struct wtfs_sb_info {
 
 /* Structure for inode in memory */
 struct wtfs_inode_info {
-	uint64_t dir_entry_count;
+	uint64_t dentry_count;
 	uint64_t first_block;
 	struct inode vfs_inode;
 };
