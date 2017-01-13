@@ -88,10 +88,13 @@
 #define WTFS_LABEL_MAX 32
 
 /* Size of data in a linked block */
-#define WTFS_LNKBLK_SIZE (WTFS_BLOCK_SIZE - 2 * sizeof(wtfs64_t))
+#define WTFS_LNKBLK_SIZE ((WTFS_BLOCK_SIZE) - 2 * sizeof(wtfs64_t))
 
 /* Size of bitmap data in bytes */
 #define WTFS_BITMAP_SIZE WTFS_LNKBLK_SIZE
+
+/* Max index count per index block in wtfs */
+#define WTFS_INDEX_COUNT_PER_BLOCK 510
 
 /* Reserved block indices */
 #define WTFS_RB_BOOT	0 /* Boot loader block */
@@ -189,6 +192,16 @@ struct wtfs_dir_block {
 	wtfs8_t padding[48];		/* 48 bytes */
 	wtfs64_t prev;			/* 8 bytes */
 	wtfs64_t next;			/* 8 bytes */
+} __attribute__((packed));
+
+/* Structure for file data index block */
+struct wtfs_index_block {
+	wtfs64_t indices	/* 4080 bytes */
+	[
+		WTFS_INDEX_COUNT_PER_BLOCK
+	];
+	wtfs64_t prev;		/* 8 bytes */
+	wtfs64_t next;		/* 8 bytes */
 } __attribute__((packed));
 
 /* Structure for symlink block */
