@@ -204,6 +204,11 @@ struct wtfs_index_block {
 	wtfs64_t next;		/* 8 bytes */
 } __attribute__((packed));
 
+/* Structure for data block */
+struct wtfs_data_block {
+	wtfs8_t data[WTFS_BLOCK_SIZE];	/* 4096 bytes */
+} __attribute__((packed));
+
 /* Structure for symlink block */
 struct wtfs_symlink_block {
 	wtfs16_t length;		/* 2 bytes */
