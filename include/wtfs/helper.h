@@ -152,5 +152,16 @@ int wtfs_clear_bitmap_bit(struct super_block * vsb, uint64_t entry,
 int wtfs_test_bitmap_bit(struct super_block * vsb, uint64_t entry,
 			 int64_t count, uint64_t offset);
 int wtfs_sync_super(struct super_block * vsb, int wait);
+struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode,
+			      const char * path, size_t length);
+ino_t wtfs_alloc_ino(struct super_block * vsb);
+uint64_t wtfs_alloc_block(struct super_block * vsb);
+void wtfs_free_ino(struct super_block * vsb, ino_t ino);
+void wtfs_free_block(struct super_block * vsb, uint64_t blkno);
+struct buffer_head * wtfs_init_linked_block(struct super_block * vsb,
+					    uint64_t blkno,
+					    struct buffer_head * prev);
+int wtfs_add_dentry(struct inode * dir_vi, struct inode * vi,
+		    const char * filename, size_t length);
 
 #endif /* WTFS_HELPER_H_ */
