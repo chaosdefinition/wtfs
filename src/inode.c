@@ -20,6 +20,18 @@
  * along with wtfs.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/fs.h>
+#include <linux/vfs.h>
+#include <linux/mount.h>
+#include <linux/namei.h>
+#include <linux/buffer_head.h>
+#include <linux/err.h>
+#include <linux/slab.h>
+#include <linux/version.h>
+
+#include <wtfs/wtfs.h>
+#include <wtfs/helper.h>
+
 /* wtfs inode operations */
 static int wtfs_create(struct inode * dir_vi, struct dentry * dentry,
 		       umode_t mode, bool excl);
