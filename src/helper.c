@@ -819,19 +819,19 @@ error:
 /*
  * Add a new dentry to a directory.
  *
- * @dir_vi: the VFS inode of the directory
- * @vi: the VFS inode associated with the new dentry
+ * @dir: the VFS inode of the directory
+ * @ino: inode number of the VFS inode associated with the new dentry
  * @filename: name of the new dentry
  * @length: size of name
  *
  * return: 0 on success, error code otherwise
  */
-int wtfs_add_dentry(struct inode * dir_vi, struct inode * vi,
-		    const char * filename, size_t length)
+int wtfs_add_dentry(struct inode * dir, ino_t ino, const char * filename,
+		    size_t length)
 {
-	struct super_block * vsb = dir_vi->i_sb;
+	struct super_block * vsb = dir->i_sb;
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
-	struct wtfs_inode_info * dir_info = WTFS_INODE_INFO(dir_vi);
+	struct wtfs_inode_info * info = WTFS_INODE_INFO(dir);
 	struct wtfs_dir_block * blk = NULL;
 	struct buffer_head * bh = NULL, * bh2 = NULL;
 	uint64_t next, blkno = 0;
@@ -851,7 +851,7 @@ int wtfs_add_dentry(struct inode * dir_vi, struct inode * vi,
 	}
 
 	/* Find an empty dentry in existing dentries */
-	next = dir_info->first_block;
+	next = info->first_block;
 	do {
 		if ((bh = sb_bread(vsb, next)) == NULL) {
 			wtfs_error("Failed to read block %llu\n", next);
@@ -863,26 +863,24 @@ int wtfs_add_dentry(struct inode * dir_vi, struct inode * vi,
 			/* Found it */
 			if (blk->dentries[i].ino == 0) {
 				/* Update parent directory */
-				blk->dentries[i].ino = cpu_to_wtfs64(vi->i_ino);
+				blk->dentries[i].ino = cpu_to_wtfs64(ino);
 				strncpy(blk->dentries[i].filename, filename,
 					length);
 				mark_buffer_dirty(bh);
 				brelse(bh);
-				dir_vi->i_ctime = CURRENT_TIME_SEC;
-				dir_vi->i_mtime = CURRENT_TIME_SEC;
-				++dir_info->dentry_count;
-				mark_inode_dirty(dir_vi);
-				/* Update associated inode */
-				inc_nlink(vi);
-				mark_inode_dirty(vi);
+				dir->i_ctime = CURRENT_TIME_SEC;
+				dir->i_mtime = CURRENT_TIME_SEC;
+				++info->dentry_count;
+				mark_inode_dirty(dir);
+
 				return 0;
 			}
 		}
 		next = wtfs64_to_cpu(blk->next);
-		if (next != dir_info->first_block) {
+		if (next != info->first_block) {
 			brelse(bh);
 		}
-	} while (next != dir_info->first_block);
+	} while (next != info->first_block);
 
 	/*
 	 * Dentries have been used up, so we create a new data block for
@@ -906,15 +904,13 @@ int wtfs_add_dentry(struct inode * dir_vi, struct inode * vi,
 	brelse(bh2);
 
 	/* Update parent directory's information */
-	dir_vi->i_ctime = dir_vi->i_mtime = CURRENT_TIME_SEC;
-	++dir_vi->i_blocks;
-	i_size_write(dir_vi, i_size_read(dir_vi) + sbi->block_size);
-	++dir_info->dentry_count;
-	mark_inode_dirty(dir_vi);
+	dir->i_ctime = CURRENT_TIME_SEC;
+	dir->i_mtime = CURRENT_TIME_SEC;
+	++dir->i_blocks;
+	i_size_write(dir, i_size_read(dir) + sbi->block_size);
+	++info->dentry_count;
+	mark_inode_dirty(dir);
 
-	/* Update associated inode */
-	inc_nlink(vi);
-	mark_inode_dirty(vi);
 	return 0;
 
 error:

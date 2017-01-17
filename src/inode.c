@@ -126,7 +126,9 @@ static int wtfs_create(struct inode * dir_vi, struct dentry * dentry,
 	}
 
 	/* Add a dentry to its parent directory */
-	wtfs_add_dentry(dir_vi, vi, dentry->d_name.name, dentry->d_name.len);
+	wtfs_add_dentry(dir_vi, vi->i_ino, dentry->d_name.name,
+			dentry->d_name.len);
+	inode_inc_link_count(vi);
 
 	d_instantiate(dentry, vi);
 

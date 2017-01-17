@@ -144,7 +144,7 @@ struct wtfs_inode * wtfs_get_inode(struct super_block * vsb, ino_t ino,
 int ino_valid(struct super_block * vsb, ino_t ino);
 struct buffer_head * wtfs_get_linked_block(struct super_block * vsb,
 					   uint64_t entry, int64_t count,
-					   uint64_t * blk_no);
+					   uint64_t * blkno);
 int wtfs_set_bitmap_bit(struct super_block * vsb, uint64_t entry,
 			int64_t count, uint64_t offset);
 int wtfs_clear_bitmap_bit(struct super_block * vsb, uint64_t entry,
@@ -161,7 +161,7 @@ void wtfs_free_block(struct super_block * vsb, uint64_t blkno);
 struct buffer_head * wtfs_init_linked_block(struct super_block * vsb,
 					    uint64_t blkno,
 					    struct buffer_head * prev);
-int wtfs_add_dentry(struct inode * dir_vi, struct inode * vi,
-		    const char * filename, size_t length);
+int wtfs_add_dentry(struct inode * dir, ino_t ino, const char * filename,
+		    size_t length);
 
 #endif /* WTFS_HELPER_H_ */
