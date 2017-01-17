@@ -659,8 +659,7 @@ static uint64_t __wtfs_alloc_obj(struct super_block * vsb, uint64_t entry,
 				 int extendable)
 {
 	struct wtfs_bitmap_block * bitmap = NULL;
-	struct buffer_head * bh = NULL, * bh2 = NULL;
-	uint64_t blkno = 0;
+	struct buffer_head * bh = NULL;
 	uint64_t next, i, j;
 
 	/* Find the first zero bit in bitmaps */
@@ -682,60 +681,20 @@ static uint64_t __wtfs_alloc_obj(struct super_block * vsb, uint64_t entry,
 			wtfs_set_bit(j, bitmap->data);
 			mark_buffer_dirty(bh);
 			brelse(bh);
-			break;
+			return i * WTFS_BITMAP_SIZE * 8 + j;
 		}
 
 		++i;
 		next = wtfs64_to_cpu(bitmap->next);
-		if (next != entry) {
-			brelse(bh);
-		}
+		brelse(bh);
 	} while (next != entry);
 
 	/* Objects has been used up */
-	if (next == entry) {
-		if (!extendable) {
-			goto error;
-		}
-		/* Allocate a new block to be the next bitmap */
-		blkno = wtfs_alloc_block(vsb);
-		if (blkno == 0) {
-			goto error;
-		}
-		bh2 = wtfs_init_linked_block(vsb, blkno, bh);
-		if (IS_ERR(bh2)) {
-			goto error;
-		}
-		brelse(bh); /* Now it's okay to release previous bitmap */
-		bh = NULL; /* Avoid double freeing on error */
-		bitmap = (struct wtfs_bitmap_block *)bh2->b_data;
-
-		/* Continue finding zero bit */
-		wtfs_debug("Finding first zero bit in bitmap %llu\n", blkno);
-		j = wtfs_find_first_zero_bit(bitmap->data, WTFS_BITMAP_SIZE * 8);
-		if (j < WTFS_BITMAP_SIZE * 8) {
-			wtfs_debug("Found a zero bit %llu in bitmap %llu\n",
-				   j, blkno);
-			wtfs_set_bit(j, bitmap->data);
-			mark_buffer_dirty(bh2);
-			brelse(bh2);
-		} else {
-			wtfs_error("Something strange happened\n");
-			goto error;
-		}
-	}
-
-	return i * WTFS_BITMAP_SIZE * 8 + j;
+	return 0
 
 error:
 	if (!IS_ERR_OR_NULL(bh)) {
 		brelse(bh);
-	}
-	if (blkno != 0) {
-		wtfs_free_block(vsb, blkno);
-	}
-	if (!IS_ERR_OR_NULL(bh2)) {
-		brelse(bh2);
 	}
 	return 0;
 }

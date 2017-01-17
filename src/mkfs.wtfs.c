@@ -62,6 +62,7 @@ int main(int argc, char * const * argv)
 		{ "fast", no_argument, NULL, 'f' },
 		{ "quiet", no_argument, NULL, 'q' },
 		{ "force", no_argument, NULL, 'F' },
+		{ "imaps", required_argument, NULL, 'i' },
 		{ "label", required_argument, NULL, 'L' },
 		{ "uuid", required_argument, NULL, 'U' },
 		{ "version", no_argument, NULL, 'V' },
@@ -78,14 +79,17 @@ int main(int argc, char * const * argv)
 	/* Bytes and blocks of the device */
 	uint64_t bytes, blocks;
 
-	/* Inode tables (default 1) */
-	uint64_t itables = 1;
+	/* Inode tables */
+	uint64_t itables;
 
 	/* Block bitmaps */
 	uint64_t bmaps;
 
 	/* Inode bitmaps (default 1) */
 	int64_t imaps = 1;
+
+	/* Minimum data blocks (not exact) */
+	uint64_t min_data_blks;
 
 	/* Filesystem label */
 	char * label = NULL;
@@ -106,6 +110,7 @@ int main(int argc, char * const * argv)
 			     "  -f, --fast            quick format\n"
 			     "  -q, --quiet           quiet mode\n"
 			     "  -F, --force           force execution\n"
+			     "  -i, --imaps=IMAPS     set inode bitmap count\n"
 			     "  -L, --label=LABEL     set filesystem label\n"
 			     "  -U, --uuid=UUID       set filesystem UUID\n"
 			     "  -V, --version         show version and exit\n"
@@ -126,6 +131,21 @@ int main(int argc, char * const * argv)
 			break;
 		case 'F':
 			force = 1;
+			break;
+		case 'i':
+			imaps = strtol(optarg, NULL, 10);
+			/*
+			 * Here we just check the left side of the range of
+			 * inode bitmap count. The right side will be done
+			 * after knowing the device size.
+			 *
+			 * Note that underflow is also included in this check.
+			 */
+			if (imaps <= 0) {
+				fprintf(stderr, "%s: Too few inode bitmaps\n",
+					argv[0]);
+				goto error;
+			}
 			break;
 		case 'L':
 			label = optarg;
@@ -212,11 +232,22 @@ int main(int argc, char * const * argv)
 	 * for the device.
 	 */
 	blocks = bytes / WTFS_BLOCK_SIZE;
+	itables = imaps * WTFS_BITMAP_SIZE * 8 / WTFS_INODE_COUNT_PER_TABLE + 1;
 	bmaps = blocks / (WTFS_BITMAP_SIZE * 8);
 	if (blocks % (WTFS_BITMAP_SIZE * 8) != 0) {
 		++bmaps;
 	}
-	if (blocks < itables + bmaps + imaps + 3) {
+	/*
+	 * If the number of inode bitmap is more than 1, it indicates that
+	 * caller assumed the volume is big enough. Then we give it an extra
+	 * limit of minimum number of data blocks.
+	 */
+	if (imaps > 1) {
+		min_data_blks = imaps * WTFS_BLOCK_SIZE * 8;
+	} else {
+		min_data_blks = 0;
+	}
+	if (blocks < itables + bmaps + imaps + min_data_blks + 3) {
 		fprintf(stderr, "%s: Volume too small\n", argv[0]);
 		goto error;
 	}
@@ -466,7 +497,7 @@ static int write_inode_table(int fd, uint64_t itables)
 	struct wtfs_inode inode = {
 		.ino = cpu_to_wtfs64(WTFS_ROOT_INO),
 		.dentry_count = cpu_to_wtfs64(2),
-		.link_count = cpu_to_wtfs32(2),
+		.link_count = cpu_to_wtfs32(1),
 		.huid = cpu_to_wtfs16(getuid() >> 16),
 		.hgid = cpu_to_wtfs16(getgid() >> 16),
 		.first_block = cpu_to_wtfs64(WTFS_DB_FIRST),
