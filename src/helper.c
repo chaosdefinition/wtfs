@@ -122,10 +122,10 @@ struct inode * wtfs_iget(struct super_block * vsb, ino_t ino)
 	return vi;
 
 error:
-	if (bh != NULL) {
+	if (!IS_ERR_OR_NULL(bh)) {
 		brelse(bh);
 	}
-	if (vi != NULL) {
+	if (!IS_ERR_OR_NULL(vi)) {
 		iget_failed(vi);
 	}
 	return ERR_PTR(ret);
@@ -145,6 +145,8 @@ struct wtfs_inode * wtfs_get_inode(struct super_block * vsb, ino_t ino,
 				   struct buffer_head ** pbh)
 {
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
+	struct wtfs_inode_table * table = NULL;
+	struct buffer_head * bh = NULL;
 	int64_t count;
 	uint64_t offset;
 	int ret = -EINVAL;
@@ -164,21 +166,20 @@ struct wtfs_inode * wtfs_get_inode(struct super_block * vsb, ino_t ino,
 	offset = (ino - WTFS_ROOT_INO) % WTFS_INODE_COUNT_PER_TABLE;
 
 	/* Get the count-th inode table from linked list */
-	*pbh = wtfs_get_linked_block(vsb, sbi->inode_table_first, count, NULL);
-	if (IS_ERR(*pbh)) {
-		ret = PTR_ERR(*pbh);
-		*pbh = NULL;
+	bh = wtfs_get_linked_block(vsb, sbi->inode_table_first, count, NULL);
+	if (IS_ERR(bh)) {
+		ret = PTR_ERR(bh);
 		goto error;
 	}
+	table = (struct wtfs_inode_table *)bh->b_data;
 
 	/* Here we get the inode */
-	return (struct wtfs_inode *)(*pbh)->b_data + offset;
+	*pbh = bh;
+	return &table->inodes[offset];
 
 error:
-	if (*pbh != NULL) {
-		brelse(*pbh);
-		/* Here we set it to NULL to avoid freeing it twice */
-		*pbh = NULL;
+	if (!IS_ERR_OR_NULL(bh)) {
+		brelse(bh);
 	}
 	return ERR_PTR(ret);
 }
@@ -262,7 +263,7 @@ struct buffer_head * wtfs_get_linked_block(struct super_block * vsb,
 	return ERR_PTR(ret);
 
 error:
-	if (bh != NULL) {
+	if (!IS_ERR_OR_NULL(bh)) {
 		brelse(bh);
 	}
 	return ERR_PTR(ret);
@@ -397,7 +398,7 @@ int wtfs_sync_super(struct super_block * vsb, int wait)
 	return 0;
 
 error:
-	if (bh != NULL) {
+	if (!IS_ERR_OR_NULL(bh)) {
 		brelse(bh);
 	}
 	return ret;
@@ -479,7 +480,7 @@ struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode,
 
 error:
 	/* We need to return the inode number and block on failure */
-	if (vi != NULL) {
+	if (!IS_ERR_OR_NULL(vi)) {
 		if (info->first_block != 0) {
 			wtfs_free_block(vsb, info->first_block);
 		}
@@ -727,13 +728,13 @@ static uint64_t __wtfs_alloc_obj(struct super_block * vsb, uint64_t entry,
 	return i * WTFS_BITMAP_SIZE * 8 + j;
 
 error:
-	if (bh != NULL) {
+	if (!IS_ERR_OR_NULL(bh)) {
 		brelse(bh);
 	}
 	if (blkno != 0) {
 		wtfs_free_block(vsb, blkno);
 	}
-	if (bh2 != NULL) {
+	if (!IS_ERR_OR_NULL(bh2)) {
 		brelse(bh2);
 	}
 	return 0;
@@ -850,7 +851,7 @@ struct buffer_head * wtfs_init_linked_block(struct super_block * vsb,
 	return bh;
 
 error:
-	if (bh != NULL) {
+	if (!IS_ERR_OR_NULL(bh)) {
 		brelse(bh);
 	}
 	return ERR_PTR(ret);
@@ -958,10 +959,10 @@ int wtfs_add_dentry(struct inode * dir_vi, struct inode * vi,
 	return 0;
 
 error:
-	if (bh != NULL) {
+	if (!IS_ERR_OR_NULL(bh)) {
 		brelse(bh);
 	}
-	if (bh2 != NULL) {
+	if (!IS_ERR_OR_NULL(bh2)) {
 		brelse(bh2);
 	}
 	if (blkno != 0) {
