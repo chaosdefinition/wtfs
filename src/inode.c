@@ -114,6 +114,7 @@ static int wtfs_create(struct inode * dir, struct dentry * dentry,
 		       umode_t mode, bool excl)
 {
 	struct inode * vi = NULL;
+	int ret;
 
 	wtfs_debug("create called, dir inode %lu, file '%s'\n", dir->i_ino,
 		   dentry->d_name.name);
@@ -125,10 +126,15 @@ static int wtfs_create(struct inode * dir, struct dentry * dentry,
 	}
 
 	/* Add a dentry to its parent directory */
-	wtfs_add_dentry(dir, vi->i_ino, dentry->d_name.name,
-			dentry->d_name.len);
-	inode_inc_link_count(vi);
+	ret = wtfs_add_dentry(dir, vi->i_ino, dentry->d_name.name,
+			      dentry->d_name.len);
+	if (ret < 0) {
+		iput(vi);
+		return ret;
+	}
 
+	/* Increase link count */
+	inode_inc_link_count(vi);
 	d_instantiate(dentry, vi);
 
 	return 0;
