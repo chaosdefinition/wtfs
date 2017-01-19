@@ -153,6 +153,7 @@ int wtfs_test_bitmap_bit(struct super_block * vsb, uint64_t entry,
 int wtfs_sync_super(struct super_block * vsb, int wait);
 struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode,
 			      const char * path, size_t length);
+void wtfs_delete_inode(struct inode * vi);
 ino_t wtfs_alloc_ino(struct super_block * vsb);
 uint64_t wtfs_alloc_block(struct super_block * vsb);
 void wtfs_free_ino(struct super_block * vsb, ino_t ino);

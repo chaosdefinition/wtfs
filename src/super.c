@@ -471,6 +471,10 @@ static void wtfs_evict_inode(struct inode * vi)
 	truncate_inode_pages_final(&vi->i_data);
 	invalidate_inode_buffers(vi);
 	clear_inode(vi);
+
+	if (vi->i_nlink == 0) {
+		wtfs_delete_inode(vi);
+	}
 }
 
 /*

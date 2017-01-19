@@ -36,6 +36,9 @@ static uint64_t __wtfs_alloc_obj(struct super_block * vsb, uint64_t entry,
 				 int extendable);
 static void __wtfs_free_obj(struct super_block * vsb, uint64_t entry,
 			    uint64_t objno);
+static void __wtfs_drop_dir(struct inode * vi);
+static void __wtfs_drop_file(struct inode * vi);
+static void __wtfs_drop_symlink(struct inode * vi);
 
 /*
  * Get the VFS inode from the inode cache.  If missed, add a new one into
@@ -588,7 +591,130 @@ static int __wtfs_init_symlink(struct inode * vi, const char * path,
 	vi->i_op = &wtfs_symlink_inops;
 	i_size_write(vi, length);
 	vi->i_blocks = 1;
+
 	return 0;
+}
+
+/*
+ * Delete an inode on disk.
+ *
+ * @vi: the VFS inode
+ */
+void wtfs_delete_inode(struct inode * vi)
+{
+	struct super_block * vsb = vi->i_sb;
+	struct wtfs_inode * inode = NULL;
+	struct buffer_head * bh = NULL;
+
+	/* Get the physical inode */
+	inode = wtfs_get_inode(vsb, vi->i_ino, &bh);
+	if (IS_ERR(inode)) {
+		return;
+	}
+
+	/* Clear inode data in inode table */
+	memset(inode, 0, sizeof(*inode));
+	mark_buffer_dirty(bh);
+	brelse(bh);
+
+	/* Free inode number in inode bitmap */
+	wtfs_free_ino(vsb, vi->i_ino);
+
+	/* Do finalization */
+	switch (vi->i_mode & S_IFMT) {
+	case S_IFDIR:
+		__wtfs_drop_dir(vi);
+		break;
+	case S_IFREG:
+		__wtfs_drop_file(vi);
+		break;
+	case S_IFLNK:
+		__wtfs_drop_symlink(vi);
+		break;
+	default:
+		wtfs_error("Unsupported file type\n");
+		break;
+	}
+
+	return;
+}
+
+/*
+ * Internal function used to delete a directory.
+ *
+ * @vi: the VFS inode of the directory
+ */
+static void __wtfs_drop_dir(struct inode * vi)
+{
+	struct super_block * vsb = vi->i_sb;
+	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
+	struct wtfs_dir_block * blk = NULL;
+	struct buffer_head * bh = NULL;
+	uint64_t next;
+
+	next = info->first_block;
+	do {
+		if ((bh = sb_bread(vsb, next)) == NULL) {
+			wtfs_error("Failed to read block %llu\n", next);
+			return;
+		}
+		blk = (struct wtfs_dir_block *)bh->b_data;
+
+		wtfs_free_block(vsb, next);
+
+		next = wtfs64_to_cpu(blk->next);
+		brelse(bh);
+	} while (next != info->first_block);
+}
+
+/*
+ * Internal function used to delete a regular file.
+ *
+ * @vi: the VFS inode of the file
+ */
+static void __wtfs_drop_file(struct inode * vi)
+{
+	struct super_block * vsb = vi->i_sb;
+	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
+	struct wtfs_index_block * blk = NULL;
+	struct buffer_head * bh = NULL;
+	uint64_t next, blkno;
+	int i;
+
+	next = info->first_block;
+	do {
+		if ((bh = sb_bread(vsb, next)) == NULL) {
+			wtfs_error("Failed to read block %llu\n", next);
+			return;
+		}
+		blk = (struct wtfs_index_block *)bh->b_data;
+
+		for (i = 0; i < WTFS_INDEX_COUNT_PER_BLOCK; ++i) {
+			blkno = wtfs64_to_cpu(blk->indices[i]);
+			if (blkno != 0) {
+				wtfs_free_block(vsb, blkno);
+			}
+		}
+		wtfs_free_block(vsb, next);
+
+		next = wtfs64_to_cpu(blk->next);
+		brelse(bh);
+	} while (next != info->first_block);
+}
+
+/*
+ * Internal function used to delete a symlink.
+ *
+ * @vi: the VFS inode of the symlink
+ */
+static void __wtfs_drop_symlink(struct inode * vi)
+{
+	struct super_block * vsb = vi->i_sb;
+	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
+
+	if (info->first_block != 0) {
+		wtfs_free_block(vsb, info->first_block);
+	}
 }
 
 /*
