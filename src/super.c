@@ -468,7 +468,7 @@ static void wtfs_evict_inode(struct inode * vi)
 {
 	wtfs_debug("evict_inode called, inode %lu\n", vi->i_ino);
 
-	truncate_inode_pages(&vi->i_data, 0);
+	truncate_inode_pages_final(&vi->i_data);
 	invalidate_inode_buffers(vi);
 	clear_inode(vi);
 }

@@ -402,17 +402,17 @@ error:
 /*
  * Create a new inode.
  *
- * @dir_vi: directory inode
+ * @dir: the VFS inode of the directory
  * @mode: file mode
  * @path: path linking to, only valid when the new inode is to be a symlink
  * @length: length of path, only valid when the new inode is to be a symlink
  *
  * return: the new inode on success, error code otherwise
  */
-struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode,
+struct inode * wtfs_new_inode(struct inode * dir, umode_t mode,
 			      const char * path, size_t length)
 {
-	struct super_block * vsb = dir_vi->i_sb;
+	struct super_block * vsb = dir->i_sb;
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	struct inode * vi = NULL;
 	struct wtfs_inode_info * info = NULL;
@@ -465,7 +465,7 @@ struct inode * wtfs_new_inode(struct inode * dir_vi, umode_t mode,
 	}
 
 	/* Set up other things */
-	inode_init_owner(vi, dir_vi, mode);
+	inode_init_owner(vi, dir, mode);
 	vi->i_atime = vi->i_ctime = vi->i_mtime = CURRENT_TIME_SEC;
 	clear_nlink(vi);
 
