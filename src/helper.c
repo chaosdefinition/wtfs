@@ -755,6 +755,54 @@ static void __wtfs_free_obj(struct super_block * vsb, uint64_t entry,
 }
 
 /*
+ * Create a new linked block.
+ *
+ * @vsb: the VFS super block structure
+ * @entry: block number of the first block in linked list
+ *
+ * return: buffer_head of the new block
+ */
+struct buffer_head * wtfs_new_linked_block(struct super_block * vsb,
+					   uint64_t entry)
+{
+	struct buffer_head * bh = NULL, * bh2 = NULL;
+	uint64_t blkno;
+	int ret;
+
+	/* Get the last linked block */
+	bh = wtfs_get_linked_block(vsb, entry, -1, NULL);
+	if (IS_ERR(bh)) {
+		ret = PTR_ERR(bh);
+		goto error;
+	}
+
+	/* Allocate a new block */
+	if ((blkno = wtfs_alloc_block(vsb)) == 0) {
+		ret = -ENOSPC;
+		goto error;
+	}
+
+	/* Initialize the new block to be the new last */
+	bh2 = wtfs_init_linked_block(vsb, blkno, &bh);
+	if (IS_ERR(bh2)) {
+		ret = PTR_ERR(bh2);
+		goto error;
+	}
+
+	brelse(bh);
+	return bh2;
+
+error:
+	if (!IS_ERR_OR_NULL(bh)) {
+		brelse(bh);
+	}
+	if (blkno != 0) {
+		wtfs_free_block(blkno);
+	}
+	return ERR_PTR(ret);
+}
+
+/*
  * Initialize a linked list block.
  *
  * @vsb: the VFS super block structure
@@ -833,8 +881,8 @@ int wtfs_add_dentry(struct inode * dir, ino_t ino, const char * filename,
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(dir);
 	struct wtfs_dir_block * blk = NULL;
-	struct buffer_head * bh = NULL, * bh2 = NULL;
-	uint64_t next, blkno = 0;
+	struct buffer_head * bh = NULL;
+	uint64_t next;
 	int i;
 	int ret = -EIO;
 
@@ -862,12 +910,14 @@ int wtfs_add_dentry(struct inode * dir, ino_t ino, const char * filename,
 		for (i = 0; i < WTFS_DENTRY_COUNT_PER_BLOCK; ++i) {
 			/* Found it */
 			if (blk->dentries[i].ino == 0) {
-				/* Update parent directory */
+				/* Do add dentry */
 				blk->dentries[i].ino = cpu_to_wtfs64(ino);
 				strncpy(blk->dentries[i].filename, filename,
 					length);
 				mark_buffer_dirty(bh);
 				brelse(bh);
+
+				/* Update inode information */
 				dir->i_ctime = CURRENT_TIME_SEC;
 				dir->i_mtime = CURRENT_TIME_SEC;
 				++info->dentry_count;
@@ -876,34 +926,29 @@ int wtfs_add_dentry(struct inode * dir, ino_t ino, const char * filename,
 				return 0;
 			}
 		}
+
 		next = wtfs64_to_cpu(blk->next);
-		if (next != info->first_block) {
-			brelse(bh);
-		}
+		brelse(bh);
 	} while (next != info->first_block);
 
 	/*
 	 * Dentries have been used up, so we create a new data block for
 	 * parent directory.
 	 */
-	if ((blkno = wtfs_alloc_block(vsb)) == 0) {
-		ret = -ENOSPC;
+	bh = wtfs_new_linked_block(vsb, info->first_block);
+	if (IS_ERR(bh)) {
+		ret = PTR_ERR(bh);
 		goto error;
 	}
-	bh2 = wtfs_init_linked_block(vsb, blkno, bh);
-	if (IS_ERR(bh2)) {
-		ret = PTR_ERR(bh2);
-		bh2 = NULL;
-		goto error;
-	}
-	brelse(bh); /* Now we can release the previous block */
-	blk = (struct wtfs_dir_block *)bh2->b_data;
-	blk->dentries[0].ino = cpu_to_wtfs64(vi->i_ino);
-	strncpy(blk->dentries[0].filename, filename, length);
-	mark_buffer_dirty(bh2);
-	brelse(bh2);
 
-	/* Update parent directory's information */
+	/* Do add dentry */
+	blk = (struct wtfs_dir_block *)bh->b_data;
+	blk->dentries[0].ino = cpu_to_wtfs64(ino);
+	strncpy(blk->dentries[0].filename, filename, length);
+	mark_buffer_dirty(bh);
+	brelse(bh);
+
+	/* Update inode information */
 	dir->i_ctime = CURRENT_TIME_SEC;
 	dir->i_mtime = CURRENT_TIME_SEC;
 	++dir->i_blocks;
@@ -916,12 +961,6 @@ int wtfs_add_dentry(struct inode * dir, ino_t ino, const char * filename,
 error:
 	if (!IS_ERR_OR_NULL(bh)) {
 		brelse(bh);
-	}
-	if (!IS_ERR_OR_NULL(bh2)) {
-		brelse(bh2);
-	}
-	if (blkno != 0) {
-		wtfs_free_block(vsb, blkno);
 	}
 	return ret;
 }

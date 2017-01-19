@@ -158,6 +158,8 @@ ino_t wtfs_alloc_ino(struct super_block * vsb);
 uint64_t wtfs_alloc_block(struct super_block * vsb);
 void wtfs_free_ino(struct super_block * vsb, ino_t ino);
 void wtfs_free_block(struct super_block * vsb, uint64_t blkno);
+struct buffer_head * wtfs_new_linked_block(struct super_block * vsb,
+					   uint64_t entry);
 struct buffer_head * wtfs_init_linked_block(struct super_block * vsb,
 					    uint64_t blkno,
 					    struct buffer_head * prev);
