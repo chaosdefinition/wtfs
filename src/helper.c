@@ -58,7 +58,7 @@ struct inode * wtfs_iget(struct super_block * vsb, ino_t ino)
 	/* Get inode in cache */
 	vi = iget_locked(vsb, (unsigned long)ino);
 	if (vi == NULL) {
-		wtfs_error("Failed to get the inode of number %llu\n", ino);
+		wtfs_error("Failed to get the inode of number %lu\n", ino);
 		ret = -ENOMEM;
 		goto error;
 	}
@@ -156,8 +156,8 @@ struct wtfs_inode * wtfs_get_inode(struct super_block * vsb, ino_t ino,
 		wtfs_error("Pointer to the buffer_head cannot be NULL\n");
 		goto error;
 	}
-	if (!is_ino_valid(vsb, ino)) {
-		wtfs_error("Invalid inode number %llu\n", ino);
+	if (!ino_valid(vsb, ino)) {
+		wtfs_error("Invalid inode number %lu\n", ino);
 		goto error;
 	}
 
@@ -413,7 +413,6 @@ struct inode * wtfs_new_inode(struct inode * dir, umode_t mode,
 			      const char * path, size_t length)
 {
 	struct super_block * vsb = dir->i_sb;
-	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	struct inode * vi = NULL;
 	struct wtfs_inode_info * info = NULL;
 	int ret = -EINVAL;
@@ -480,7 +479,7 @@ error:
 			wtfs_free_block(vsb, info->first_block);
 		}
 		if (vi->i_ino != 0) {
-			wtfs_free_inode(vsb, vi->i_ino);
+			wtfs_free_ino(vsb, vi->i_ino);
 		}
 		iput(vi);
 	}
@@ -514,6 +513,7 @@ static int __wtfs_init_dir(struct inode * vi)
 	info->dentry_count = 0;
 	i_size_write(vi, sbi->block_size);
 	vi->i_blocks = 1;
+
 	return 0;
 }
 
@@ -552,6 +552,8 @@ static int __wtfs_init_file(struct inode * vi)
 	vi->i_fop = &wtfs_file_ops;
 	i_size_write(vi, 0);
 	vi->i_blocks = 2;
+
+	return 0;
 }
 
 /*
@@ -685,7 +687,7 @@ static uint64_t __wtfs_alloc_obj(struct super_block * vsb, uint64_t entry,
 	} while (next != entry);
 
 	/* Objects has been used up */
-	return 0
+	return 0;
 
 error:
 	if (!IS_ERR_OR_NULL(bh)) {
@@ -778,7 +780,7 @@ struct buffer_head * wtfs_new_linked_block(struct super_block * vsb,
 	}
 
 	/* Initialize the new block to be the new last */
-	bh2 = wtfs_init_linked_block(vsb, blkno, &bh);
+	bh2 = wtfs_init_linked_block(vsb, blkno, bh);
 	if (IS_ERR(bh2)) {
 		ret = PTR_ERR(bh2);
 		goto error;
@@ -792,7 +794,7 @@ error:
 		brelse(bh);
 	}
 	if (blkno != 0) {
-		wtfs_free_block(blkno);
+		wtfs_free_block(vsb, blkno);
 	}
 	return ERR_PTR(ret);
 }
