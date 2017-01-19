@@ -133,3 +133,34 @@ static int wtfs_create(struct inode * dir, struct dentry * dentry,
 
 	return 0;
 }
+
+/*
+ * Routine called when the VFS needs to look up an inode in a parent directory.
+ *
+ * @dir: the VFS inode of the parent directory
+ * @dentry: dentry of the file to look up
+ * @flags: ignored here
+ *
+ * return: NULL on success, error code otherwise
+ */
+static struct dentry * wtfs_lookup(struct inode * dir, struct dentry * dentry,
+				   unsigned int flags)
+{
+	struct inode * vi = NULL;
+	ino_t ino;
+
+	wtfs_debug("lookup called, dir inode %lu, file '%s'\n", dir->i_ino,
+		   dentry->d_name.name);
+
+	/* Find dentry by name */
+	if ((ino = wtfs_find_dentry(dir, dentry)) != 0) {
+		vi = wtfs_iget(dir->i_sb, ino);
+		if (IS_ERR(vi)) {
+			return ERR_CAST(vi);
+		}
+	}
+
+	/* We should call d_add() no matter if we find the inode */
+	d_add(dentry, vi);
+	return NULL;
+}

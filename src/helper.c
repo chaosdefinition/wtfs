@@ -959,3 +959,57 @@ error:
 	}
 	return ret;
 }
+
+/*
+ * Find the specified dentry in a directory.
+ *
+ * @dir: the VFS inode of the directory
+ * @dentry: the dentry to search
+ *
+ * return: inode number of the dentry on success, 0 otherwise
+ */
+ino_t wtfs_find_dentry(struct inode * dir, struct dentry * dentry)
+{
+	struct super_block * vsb = dir->i_sb;
+	struct wtfs_inode_info * info = WTFS_INODE_INFO(dir);
+	struct wtfs_dir_block * blk = NULL;
+	struct buffer_head * bh = NULL;
+	uint64_t next;
+	ino_t ino;
+	int i;
+
+	/* First check if name is too long */
+	if (dentry->d_name.len >= WTFS_FILENAME_MAX) {
+		goto error;
+	}
+
+	/* Do search */
+	next = info->first_block;
+	do {
+		if ((bh = sb_bread(vsb, next)) == NULL) {
+			wtfs_error("Failed to read block %llu\n", next);
+			goto error;
+		}
+		blk = (struct wtfs_dir_block *)bh->b_data;
+
+		for (i = 0; i < WTFS_DENTRY_COUNT_PER_BLOCK; ++i) {
+			ino = wtfs64_to_cpu(blk->dentries[i].ino);
+			if (ino != 0 && strcmp(blk->dentries[i].filename,
+					       dentry->d_name.name) == 0) {
+				brelse(bh);
+				return ino;
+			}
+		}
+
+		next = wtfs64_to_cpu(blk->next);
+		brelse(bh);
+	} while (next != info->first_block);
+
+	return 0;
+
+error:
+	if (!IS_ERR_OR_NULL(bh)) {
+		brelse(bh);
+	}
+	return 0;
+}
