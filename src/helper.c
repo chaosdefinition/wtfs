@@ -166,7 +166,7 @@ struct wtfs_inode * wtfs_get_inode(struct super_block * vsb, ino_t ino,
 	offset = (ino - WTFS_ROOT_INO) % WTFS_INODE_COUNT_PER_TABLE;
 
 	/* Get the count-th inode table from linked list */
-	bh = wtfs_get_linked_block(vsb, sbi->inode_table_first, count, NULL);
+	bh = wtfs_get_linked_block(vsb, sbi->inode_table_first, count);
 	if (IS_ERR(bh)) {
 		ret = PTR_ERR(bh);
 		goto error;
@@ -212,14 +212,12 @@ int ino_valid(struct super_block * vsb, ino_t ino)
  * @vsb: the VFS super block structure
  * @entry: the entry block number
  * @count: the position in the linked list, can be negative
- * @blkno: place to store the block number, can be NULL
  *
  * return: the buffer_head of the block on success, error code otherwise
  *         it must be released outside after this function being called
  */
 struct buffer_head * wtfs_get_linked_block(struct super_block * vsb,
-					   uint64_t entry, int64_t count,
-					   uint64_t * blkno)
+					   uint64_t entry, int64_t count)
 {
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	struct wtfs_linked_block * blk = NULL;
@@ -244,9 +242,6 @@ struct buffer_head * wtfs_get_linked_block(struct super_block * vsb,
 			goto error;
 		}
 		if (i == count) {
-			if (blkno != NULL) {
-				*blkno = next;
-			}
 			return bh;
 		} else {
 			blk = (struct wtfs_linked_block *)bh->b_data;
@@ -284,7 +279,7 @@ int wtfs_set_bitmap_bit(struct super_block * vsb, uint64_t entry,
 {
 	struct buffer_head * bh = NULL;
 
-	bh = wtfs_get_linked_block(vsb, entry, count, NULL);
+	bh = wtfs_get_linked_block(vsb, entry, count);
 	if (IS_ERR(bh)) {
 		return PTR_ERR(bh);
 	}
@@ -312,7 +307,7 @@ int wtfs_clear_bitmap_bit(struct super_block * vsb, uint64_t entry,
 {
 	struct buffer_head * bh = NULL;
 
-	bh = wtfs_get_linked_block(vsb, entry, count, NULL);
+	bh = wtfs_get_linked_block(vsb, entry, count);
 	if (IS_ERR(bh)) {
 		return PTR_ERR(bh);
 	}
@@ -341,7 +336,7 @@ int wtfs_test_bitmap_bit(struct super_block * vsb, uint64_t entry,
 	struct buffer_head * bh = NULL;
 	int ret;
 
-	bh = wtfs_get_linked_block(vsb, entry, count, NULL);
+	bh = wtfs_get_linked_block(vsb, entry, count);
 	if (IS_ERR(bh)) {
 		return PTR_ERR(bh);
 	}
@@ -770,7 +765,7 @@ struct buffer_head * wtfs_new_linked_block(struct super_block * vsb,
 	int ret;
 
 	/* Get the last linked block */
-	bh = wtfs_get_linked_block(vsb, entry, -1, NULL);
+	bh = wtfs_get_linked_block(vsb, entry, -1);
 	if (IS_ERR(bh)) {
 		ret = PTR_ERR(bh);
 		goto error;
