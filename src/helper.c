@@ -140,7 +140,7 @@ error:
  *
  * @vsb: the VFS super block structure
  * @ino: inode number
- * @pbh: a pointer to struct buffer_head
+ * @pbh: place to store the pointer value of the buffer_head
  *
  * return: a pointer to the physical inode on success, error code otherwise
  */
@@ -154,11 +154,7 @@ struct wtfs_inode * wtfs_get_inode(struct super_block * vsb, ino_t ino,
 	uint64_t offset;
 	int ret = -EINVAL;
 
-	/* First check if pbh is not NULL and inode number is valid */
-	if (pbh == NULL) {
-		wtfs_error("Pointer to the buffer_head cannot be NULL\n");
-		goto error;
-	}
+	/* First check if inode number is valid */
 	if (!ino_valid(vsb, ino)) {
 		wtfs_error("Invalid inode number %lu\n", ino);
 		goto error;
@@ -993,7 +989,7 @@ error:
  * @dir: the VFS inode of the directory
  * @ino: inode number of the VFS inode associated with the new dentry
  * @filename: name of the new dentry
- * @length: size of name
+ * @length: length of filename
  *
  * return: 0 on success, error code otherwise
  */
