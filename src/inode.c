@@ -174,7 +174,7 @@ static struct dentry * wtfs_lookup(struct inode * dir, struct dentry * dentry,
 /*
  * Routine called to delete a dentry.
  *
- * @dir_vi: the VFS inode of the parent directory
+ * @dir: the VFS inode of the parent directory
  * @dentry: dentry to delete
  *
  * return: 0 on success, error code otherwise
@@ -195,6 +195,54 @@ static int wtfs_unlink(struct inode * dir, struct dentry * dentry)
 	/* Update ctime and link count */
 	vi->i_ctime = dir->i_ctime;
 	inode_dec_link_count(vi);
+
+	return 0;
+}
+
+/*
+ * Routine called to create a new directory.
+ *
+ * @dir: the VFS inode of the parent directory
+ * @dentry: dentry of the directory to create
+ * @mode: file mode
+ *
+ * return: 0 on success, error code otherwise
+ */
+static int wtfs_mkdir(struct inode * dir, struct dentry * dentry, umode_t mode)
+{
+	struct inode * vi = NULL;
+	int ret;
+
+	wtfs_debug("mkdir called, parent inode %lu, dir to create '%s', "
+		   "mode 0%o\n", dir->i_ino, dentry->d_name.name, mode);
+
+	/* Create a new inode */
+	vi = wtfs_new_inode(dir, mode | S_IFDIR, NULL, 0);
+	if (IS_ERR(vi)) {
+		return PTR_ERR(vi);
+	}
+
+	/* Add two dentries of '.' and '..' to itself */
+	if ((ret = wtfs_add_dentry(vi, vi->i_ino, ".", 1)) < 0) {
+		iput(vi);
+		return ret;
+	}
+	if ((ret = wtfs_add_dentry(vi, dir->i_ino, "..", 2)) < 0) {
+		iput(vi);
+		return ret;
+	}
+
+	/* Add a dentry to its parent directory */
+	ret = wtfs_add_dentry(dir, vi->i_ino, dentry->d_name.name,
+			      dentry->d_name.len);
+	if (ret < 0) {
+		iput(vi);
+		return ret;
+	}
+
+	/* Increase link count */
+	inode_inc_link_count(vi);
+	d_instantiate(dentry, vi);
 
 	return 0;
 }
