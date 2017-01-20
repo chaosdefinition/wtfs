@@ -165,6 +165,10 @@ struct buffer_head * wtfs_init_linked_block(struct super_block * vsb,
 					    struct buffer_head * prev);
 int wtfs_add_dentry(struct inode * dir, ino_t ino, const char * filename,
 		    size_t length);
-ino_t wtfs_find_dentry(struct inode * dir, struct dentry * dentry);
+ino_t wtfs_find_dentry(struct inode * dir, const char * filename);
+int wtfs_delete_dentry(struct inode * dir, const char * filename);
+struct wtfs_dentry * wtfs_dentry_by_name(struct inode * dir,
+					 const char * filename,
+					 struct buffer_head ** pbh);
 
 #endif /* WTFS_HELPER_H_ */

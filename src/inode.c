@@ -159,7 +159,7 @@ static struct dentry * wtfs_lookup(struct inode * dir, struct dentry * dentry,
 		   dentry->d_name.name);
 
 	/* Find dentry by name */
-	if ((ino = wtfs_find_dentry(dir, dentry)) != 0) {
+	if ((ino = wtfs_find_dentry(dir, dentry->d_name.name)) != 0) {
 		vi = wtfs_iget(dir->i_sb, ino);
 		if (IS_ERR(vi)) {
 			return ERR_CAST(vi);

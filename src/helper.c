@@ -999,129 +999,161 @@ int wtfs_add_dentry(struct inode * dir, ino_t ino, const char * filename,
 	struct super_block * vsb = dir->i_sb;
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(dir);
+	struct wtfs_dentry * de = NULL;
 	struct wtfs_dir_block * blk = NULL;
 	struct buffer_head * bh = NULL;
-	uint64_t next;
-	int i;
-	int ret = -EIO;
 
 	/* Check filename */
 	if (length == 0) {
 		wtfs_error("No dentry name specified\n");
-		ret = -ENOENT;
-		goto error;
+		return -EINVAL;
 	}
 	if (length >= WTFS_FILENAME_MAX) {
 		wtfs_error("Dentry name too long\n");
-		ret = -ENAMETOOLONG;
-		goto error;
+		return -ENAMETOOLONG;
 	}
 
-	/* Find an empty dentry in existing dentries */
-	next = info->first_block;
-	do {
-		if ((bh = sb_bread(vsb, next)) == NULL) {
-			wtfs_error("Failed to read block %llu\n", next);
-			goto error;
+	/* Find an empty dentry */
+	de = wtfs_dentry_by_name(dir, "", &bh);
+
+	/* Found one, then fill it with inode number and filename */
+	if (!IS_ERR(de)) {
+		de->ino = cpu_to_wtfs64(ino);
+		strncpy(de->filename, filename, length);
+		mark_buffer_dirty(bh);
+		brelse(bh);
+
+		/* Update inode information */
+		dir->i_ctime = CURRENT_TIME_SEC;
+		dir->i_mtime = CURRENT_TIME_SEC;
+		++info->dentry_count;
+		mark_inode_dirty(dir);
+
+		return 0;
+	}
+	/* Empty dentries have been used up */
+	else if (PTR_ERR(de) == -ENOENT) {
+		/* Create a new data block for parent directory */
+		bh = wtfs_new_linked_block(vsb, info->first_block);
+		if (IS_ERR(bh)) {
+			return PTR_ERR(bh);
 		}
 		blk = (struct wtfs_dir_block *)bh->b_data;
 
-		for (i = 0; i < WTFS_DENTRY_COUNT_PER_BLOCK; ++i) {
-			/* Found it */
-			if (blk->dentries[i].ino == 0) {
-				/* Do add dentry */
-				blk->dentries[i].ino = cpu_to_wtfs64(ino);
-				strncpy(blk->dentries[i].filename, filename,
-					length);
-				mark_buffer_dirty(bh);
-				brelse(bh);
-
-				/* Update inode information */
-				dir->i_ctime = CURRENT_TIME_SEC;
-				dir->i_mtime = CURRENT_TIME_SEC;
-				++info->dentry_count;
-				mark_inode_dirty(dir);
-
-				return 0;
-			}
-		}
-
-		next = wtfs64_to_cpu(blk->next);
+		/* Do add dentry */
+		blk->dentries[0].ino = cpu_to_wtfs64(ino);
+		strncpy(blk->dentries[0].filename, filename, length);
+		mark_buffer_dirty(bh);
 		brelse(bh);
-	} while (next != info->first_block);
 
-	/*
-	 * Dentries have been used up, so we create a new data block for
-	 * parent directory.
-	 */
-	bh = wtfs_new_linked_block(vsb, info->first_block);
-	if (IS_ERR(bh)) {
-		ret = PTR_ERR(bh);
-		goto error;
+		/* Update inode information */
+		dir->i_ctime = CURRENT_TIME_SEC;
+		dir->i_mtime = CURRENT_TIME_SEC;
+		++dir->i_blocks;
+		i_size_write(dir, i_size_read(dir) + sbi->block_size);
+		++info->dentry_count;
+		mark_inode_dirty(dir);
+
+		return 0;
 	}
-
-	/* Do add dentry */
-	blk = (struct wtfs_dir_block *)bh->b_data;
-	blk->dentries[0].ino = cpu_to_wtfs64(ino);
-	strncpy(blk->dentries[0].filename, filename, length);
-	mark_buffer_dirty(bh);
-	brelse(bh);
-
-	/* Update inode information */
-	dir->i_ctime = CURRENT_TIME_SEC;
-	dir->i_mtime = CURRENT_TIME_SEC;
-	++dir->i_blocks;
-	i_size_write(dir, i_size_read(dir) + sbi->block_size);
-	++info->dentry_count;
-	mark_inode_dirty(dir);
-
-	return 0;
-
-error:
-	if (!IS_ERR_OR_NULL(bh)) {
-		brelse(bh);
+	/* Other errors */
+	else {
+		return PTR_ERR(de);
 	}
-	return ret;
 }
 
 /*
  * Find the specified dentry in a directory.
  *
  * @dir: the VFS inode of the directory
- * @dentry: the dentry to search
+ * @filename: name of the dentry to find
  *
  * return: inode number of the dentry on success, 0 otherwise
  */
-ino_t wtfs_find_dentry(struct inode * dir, struct dentry * dentry)
+ino_t wtfs_find_dentry(struct inode * dir, const char * filename)
+{
+	struct wtfs_dentry * de = NULL;
+	struct buffer_head * bh = NULL;
+	ino_t ino = 0;
+
+	/* Find dentry by name */
+	de = wtfs_dentry_by_name(dir, filename, &bh);
+	if (!IS_ERR(de)) {
+		ino = wtfs64_to_cpu(de->ino);
+		brelse(bh);
+	}
+
+	return ino;
+}
+
+/*
+ * Delete the specified dentry in a directory.
+ *
+ * @dir: the VFS inode of the directory
+ * @filename: name of the dentry to delete
+ *
+ * return: 0 on success, error code otherwise
+ */
+int wtfs_delete_dentry(struct inode * dir, const char * filename)
+{
+	struct wtfs_inode_info * info = WTFS_INODE_INFO(dir);
+	struct wtfs_dentry * de = NULL;
+	struct buffer_head * bh = NULL;
+
+	/* Find dentry by name */
+	de = wtfs_dentry_by_name(dir, filename, &bh);
+	if (IS_ERR(de)) {
+		return PTR_ERR(de);
+	}
+
+	/* Clear the dentry */
+	memset(de, 0, sizeof(*de));
+	mark_buffer_dirty(bh);
+	brelse(bh);
+
+	/* Update inode information */
+	dir->i_ctime = CURRENT_TIME_SEC;
+	dir->i_mtime = CURRENT_TIME_SEC;
+	--info->dentry_count;
+	mark_inode_dirty(dir);
+
+	return 0;
+}
+
+/*
+ * Find the physical dentry of specified name.
+ * The buffer_head must be released after this function being called.
+ *
+ * @dir: the VFS inode of the directory
+ * @filename: name of the dentry
+ * @pbh: place to store the pointer value of the buffer_head
+ *
+ * return: a pointer to the physical dentry on success, error code otherwise
+ */
+struct wtfs_dentry * wtfs_dentry_by_name(struct inode * dir,
+					 const char * filename,
+					 struct buffer_head ** pbh)
 {
 	struct super_block * vsb = dir->i_sb;
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(dir);
 	struct wtfs_dir_block * blk = NULL;
 	struct buffer_head * bh = NULL;
 	uint64_t next;
-	ino_t ino;
 	int i;
-
-	/* First check if name is too long */
-	if (dentry->d_name.len >= WTFS_FILENAME_MAX) {
-		goto error;
-	}
 
 	/* Do search */
 	next = info->first_block;
 	do {
 		if ((bh = sb_bread(vsb, next)) == NULL) {
 			wtfs_error("Failed to read block %llu\n", next);
-			goto error;
+			return ERR_PTR(-EIO);
 		}
 		blk = (struct wtfs_dir_block *)bh->b_data;
 
 		for (i = 0; i < WTFS_DENTRY_COUNT_PER_BLOCK; ++i) {
-			ino = wtfs64_to_cpu(blk->dentries[i].ino);
-			if (ino != 0 && strcmp(blk->dentries[i].filename,
-					       dentry->d_name.name) == 0) {
-				brelse(bh);
-				return ino;
+			if (strcmp(blk->dentries[i].filename, filename) == 0) {
+				*pbh = bh;
+				return &blk->dentries[i];
 			}
 		}
 
@@ -1129,11 +1161,5 @@ ino_t wtfs_find_dentry(struct inode * dir, struct dentry * dentry)
 		brelse(bh);
 	} while (next != info->first_block);
 
-	return 0;
-
-error:
-	if (!IS_ERR_OR_NULL(bh)) {
-		brelse(bh);
-	}
-	return 0;
+	return ERR_PTR(-ENOENT);
 }
