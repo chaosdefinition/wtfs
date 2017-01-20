@@ -246,3 +246,27 @@ static int wtfs_mkdir(struct inode * dir, struct dentry * dentry, umode_t mode)
 
 	return 0;
 }
+
+/*
+ * Routine called to delete an empty directory.
+ *
+ * @dir: the VFS inode of the parent directory
+ * @dentry: dentry of the directory to delete
+ *
+ * return: 0 on success, error code otherwise
+ */
+static int wtfs_rmdir(struct inode * dir, struct dentry * dentry)
+{
+	struct inode * vi = d_inode(dentry);
+	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
+
+	wtfs_debug("rmdir called, dir '%s' of inode %lu "
+		   "with dentry count %llu\n", dentry->d_name.name, vi->i_ino,
+		   info->dentry_count);
+
+	/* Call ->unlink() if it contains only 2 dentries ('.' and '..') */
+	if (info->dentry_count > 2) {
+		return -ENOTEMPTY;
+	}
+	return wtfs_unlink(dir, dentry);
+}
