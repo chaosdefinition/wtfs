@@ -326,3 +326,49 @@ static int wtfs_rename(struct inode * old_dir, struct dentry * old_dentry,
 
 	return 0;
 }
+
+/*
+ * Routine called to create a new symlink file.
+ *
+ * @dir: the VFS inode of the parent directory
+ * @dentry: dentry of the symlink file to create
+ * @symname: filename linking to
+ *
+ * return: 0 on success, error code otherwise
+ */
+static int wtfs_symlink(struct inode * dir, struct dentry * dentry,
+			const char * symname)
+{
+	struct inode * vi = NULL;
+	size_t length;
+	int ret;
+
+	wtfs_debug("symlink called, dir inode %lu, file '%s' linking to '%s'\n",
+		   dir->i_ino, dentry->d_name.name, symname);
+
+	/* Check symlink length */
+	length = strnlen(symname, WTFS_SYMLINK_MAX);
+	if (length == WTFS_SYMLINK_MAX) {
+		return -ENAMETOOLONG;
+	}
+
+	/* Create a new inode */
+	vi = wtfs_new_inode(dir, S_IFLNK | S_IRWXUGO, symname, length);
+	if (IS_ERR(vi)) {
+		return PTR_ERR(vi);
+	}
+
+	/* Add a dentry to its parent directory */
+	ret = wtfs_add_dentry(dir, vi->i_ino, dentry->d_name.name,
+			      dentry->d_name.len);
+	if (ret < 0) {
+		iput(vi);
+		return ret;
+	}
+
+	/* Increase link count */
+	inode_inc_link_count(vi);
+	d_instantiate(dentry, vi);
+
+	return 0;
+}
