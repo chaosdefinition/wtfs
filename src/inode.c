@@ -270,3 +270,59 @@ static int wtfs_rmdir(struct inode * dir, struct dentry * dentry)
 	}
 	return wtfs_unlink(dir, dentry);
 }
+
+/*
+ * Routine called to rename a dentry.
+ *
+ * @old_dir: the VFS inode of the old parent directory
+ * @old_dentry: the old dentry
+ * @new_dir: the VFS inode of the new parent directory
+ * @new_dentry: the new dentry
+ *
+ * return: 0 on success, error code otherwise
+ */
+static int wtfs_rename(struct inode * old_dir, struct dentry * old_dentry,
+		       struct inode * new_dir, struct dentry * new_dentry)
+{
+	struct inode * old_vi = d_inode(old_dentry);
+	struct inode * new_vi = d_inode(new_dentry);
+	int ret = -EINVAL;
+
+	wtfs_debug("rename called to move '%s' in dir of inode %lu to "
+		   "'%s' in dir of inode %lu\n", old_dentry->d_name.name,
+		   old_dir->i_ino, new_dentry->d_name.name, new_dir->i_ino);
+
+	/* Destination dentry exists, remove it */
+	if (new_vi != NULL) {
+		switch (new_vi->i_mode & S_IFMT) {
+		case S_IFDIR:
+			if ((ret = wtfs_rmdir(new_dir, new_dentry)) < 0) {
+				return ret;
+			}
+			break;
+		case S_IFREG:
+		case S_IFLNK:
+			if ((ret = wtfs_unlink(new_dir, new_dentry)) < 0) {
+				return ret;
+			}
+			break;
+		default:
+			wtfs_error("Special file type not supported\n");
+			return ret;
+		}
+	}
+
+	/* Add a new dentry in new directory */
+	ret = wtfs_add_dentry(new_dir, old_vi->i_ino, new_dentry->d_name.name,
+			      new_dentry->d_name.len);
+	if (ret < 0) {
+		return ret;
+	}
+
+	/* Remove dentry in old directory */
+	if ((ret = wtfs_delete_dentry(old_dir, old_dentry->d_name.name)) < 0) {
+		return ret;
+	}
+
+	return 0;
+}
