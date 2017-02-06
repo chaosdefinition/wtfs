@@ -42,11 +42,11 @@ static int wtfs_mkdir(struct inode * dir, struct dentry * dentry, umode_t mode);
 static int wtfs_rmdir(struct inode * dir, struct dentry * dentry);
 static int wtfs_rename(struct inode * old_dir, struct dentry * old_dentry,
 		       struct inode * new_dir, struct dentry * new_dentry);
+static int wtfs_symlink(struct inode * dir, struct dentry * dentry,
+			const char * symname);
 static int wtfs_setattr(struct dentry * dentry, struct iattr * attr);
 static int wtfs_getattr(struct vfsmount * mnt, struct dentry * dentry,
 			struct kstat * stat);
-static int wtfs_symlink(struct inode * dir, struct dentry * dentry,
-			const char * symname);
 static int wtfs_readlink(struct dentry * dentry, char __user * buf, int length);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 2, 0)
@@ -56,7 +56,7 @@ static void wtfs_put_link(struct dentry * dentry, struct nameidata * nd,
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
 static const char * wtfs_follow_link(struct dentry * dentry, void ** cookie);
 static void wtfs_put_link(struct inode * vi, void * cookie);
-#else
+#else /* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0) */
 static const char * wtfs_get_link(struct dentry * dentry, struct inode * vi,
 				  struct delayed_call * done);
 static void wtfs_put_link(void * cookie);
@@ -88,7 +88,7 @@ const struct inode_operations wtfs_symlink_inops = {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
 	.follow_link = wtfs_follow_link,
 	.put_link = wtfs_put_link,
-#else
+#else /* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0) */
 	.get_link = wtfs_get_link,
 #endif
 
@@ -369,6 +369,67 @@ static int wtfs_symlink(struct inode * dir, struct dentry * dentry,
 	/* Increase link count */
 	inode_inc_link_count(vi);
 	d_instantiate(dentry, vi);
+
+	return 0;
+}
+
+/*
+ * Routine called by the VFS to set attributes for an inode.
+ *
+ * @dentry: dentry of the file
+ * @attr: attributes to set
+ *
+ * return: 0 on success, error code otherwise
+ */
+static int wtfs_setattr(struct dentry * dentry, struct iattr * attr)
+{
+	struct inode * vi = d_inode(dentry);
+	int ret;
+
+	wtfs_debug("setattr called, file '%s' of inode %lu\n",
+		   dentry->d_name.name, vi->i_ino);
+
+	/* Check if the attributes can be set */
+	if ((ret = inode_change_ok(vi, attr)) < 0) {
+		return ret;
+	}
+
+	/* Do set attributes */
+	setattr_copy(vi, attr);
+	if (attr->ia_valid & ATTR_SIZE) {
+		i_size_write(vi, attr->ia_size);
+	}
+	mark_inode_dirty(vi);
+
+	return 0;
+}
+
+/*
+ * Routine called by the VFS to get attributes of an inode.
+ *
+ * @mnt: mount point
+ * @dentry: dentry of the file
+ * @stat: buffer to hold the attributes
+ *
+ * return: 0
+ */
+static int wtfs_getattr(struct vfsmount * mnt, struct dentry * dentry,
+			struct kstat * stat)
+{
+	struct wtfs_sb_info * sbi = WTFS_SB_INFO(dentry->d_sb);
+	struct inode * vi = d_inode(dentry);
+
+	wtfs_debug("getattr called, file '%s' of inode %lu\n",
+		   dentry->d_name.name, vi->i_ino);
+
+	/*
+	 * Simply call generic_fillattr() because the VFS inode already
+	 * contains most attributes we want.
+	 */
+	generic_fillattr(vi, stat);
+
+	/* The only thing we need to do is to set block size */
+	stat->blksize = sbi->block_size;
 
 	return 0;
 }
