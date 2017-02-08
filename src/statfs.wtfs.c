@@ -299,7 +299,7 @@ static int read_inode_table(int fd)
 		printf("In inode table %lu:\n", next);
 		printf("prev: %llu\n", wtfs64_to_cpu(itable.prev));
 		printf("next: %llu\n", wtfs64_to_cpu(itable.next));
-		for (i = 0; i < WTFS_INODE_COUNT_PER_TABLE; ++i) {
+		for (i = 0; i < WTFS_INODES_PER_TABLE; ++i) {
 			if (wtfs64_to_cpu(itable.inodes[i].ino) != 0) {
 				printf("ino: %llu\n",
 				       wtfs64_to_cpu(itable.inodes[i].ino));
@@ -395,7 +395,7 @@ static int read_root_dir(int fd)
 			return -EIO;
 		}
 
-		for (i = 0; i < WTFS_DENTRY_COUNT_PER_BLOCK; ++i) {
+		for (i = 0; i < WTFS_DENTRIES_PER_BLOCK; ++i) {
 			ino = wtfs64_to_cpu(root_blk.dentries[i].ino);
 			filename = root_blk.dentries[i].filename;
 			if (ino != 0) {

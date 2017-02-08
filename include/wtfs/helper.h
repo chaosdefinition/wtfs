@@ -55,7 +55,7 @@ static inline blkcnt_t wtfs_file_blkcnt(const struct wtfs_inode * inode,
 					uint64_t blk_size)
 {
 	blkcnt_t dblocks = wtfs_file_size(inode) / blk_size + 1;
-	blkcnt_t iblocks = dblocks / WTFS_INDEX_COUNT_PER_BLOCK + 1;
+	blkcnt_t iblocks = dblocks / WTFS_INDICES_PER_BLOCK + 1;
 	return dblocks + iblocks;
 }
 
@@ -68,7 +68,7 @@ static inline blkcnt_t wtfs_file_blkcnt(const struct wtfs_inode * inode,
  */
 static inline blkcnt_t wtfs_dir_blkcnt(const struct wtfs_inode * inode)
 {
-	blkcnt_t divisor = WTFS_DENTRY_COUNT_PER_BLOCK;
+	blkcnt_t divisor = WTFS_DENTRIES_PER_BLOCK;
 	return wtfs64_to_cpu(inode->dentry_count) / divisor + 1;
 }
 

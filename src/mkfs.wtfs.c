@@ -232,7 +232,7 @@ int main(int argc, char * const * argv)
 	 * for the device.
 	 */
 	blocks = bytes / WTFS_BLOCK_SIZE;
-	itables = imaps * WTFS_BITMAP_SIZE * 8 / WTFS_INODE_COUNT_PER_TABLE + 1;
+	itables = imaps * WTFS_BITMAP_SIZE * 8 / WTFS_INODES_PER_TABLE + 1;
 	bmaps = blocks / (WTFS_BITMAP_SIZE * 8);
 	if (blocks % (WTFS_BITMAP_SIZE * 8) != 0) {
 		++bmaps;

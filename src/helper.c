@@ -161,8 +161,8 @@ struct wtfs_inode * wtfs_get_inode(struct super_block * vsb, ino_t ino,
 	}
 
 	/* Calculate the index of inode table and the offset */
-	count = (ino - WTFS_ROOT_INO) / WTFS_INODE_COUNT_PER_TABLE;
-	offset = (ino - WTFS_ROOT_INO) % WTFS_INODE_COUNT_PER_TABLE;
+	count = (ino - WTFS_ROOT_INO) / WTFS_INODES_PER_TABLE;
+	offset = (ino - WTFS_ROOT_INO) % WTFS_INODES_PER_TABLE;
 
 	/* Get the count-th inode table from linked list */
 	bh = wtfs_get_linked_block(vsb, sbi->inode_table_first, count);
@@ -685,7 +685,7 @@ static void __wtfs_drop_file(struct inode * vi)
 		}
 		blk = (struct wtfs_index_block *)bh->b_data;
 
-		for (i = 0; i < WTFS_INDEX_COUNT_PER_BLOCK; ++i) {
+		for (i = 0; i < WTFS_INDICES_PER_BLOCK; ++i) {
 			blkno = wtfs64_to_cpu(blk->indices[i]);
 			if (blkno != 0) {
 				wtfs_free_block(vsb, blkno);
@@ -1150,7 +1150,7 @@ struct wtfs_dentry * wtfs_dentry_by_name(struct inode * dir,
 		}
 		blk = (struct wtfs_dir_block *)bh->b_data;
 
-		for (i = 0; i < WTFS_DENTRY_COUNT_PER_BLOCK; ++i) {
+		for (i = 0; i < WTFS_DENTRIES_PER_BLOCK; ++i) {
 			if (strcmp(blk->dentries[i].filename, filename) == 0) {
 				*pbh = bh;
 				return &blk->dentries[i];

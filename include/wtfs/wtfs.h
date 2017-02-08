@@ -73,13 +73,13 @@
 #define WTFS_INODE_SIZE 64
 
 /* Max inode count per table in wtfs */
-#define WTFS_INODE_COUNT_PER_TABLE 63
+#define WTFS_INODES_PER_TABLE 63
 
 /* Max length of filename in wtfs */
 #define WTFS_FILENAME_MAX 56
 
 /* Max dentry count per block in wtfs */
-#define WTFS_DENTRY_COUNT_PER_BLOCK 63
+#define WTFS_DENTRIES_PER_BLOCK 63
 
 /* Max length of symlink content in wtfs */
 #define WTFS_SYMLINK_MAX 4094
@@ -94,7 +94,7 @@
 #define WTFS_BITMAP_SIZE WTFS_LNKBLK_SIZE
 
 /* Max index count per index block in wtfs */
-#define WTFS_INDEX_COUNT_PER_BLOCK 510
+#define WTFS_INDICES_PER_BLOCK 510
 
 /* Reserved block indices */
 #define WTFS_RB_BOOT	0 /* Boot loader block */
@@ -163,7 +163,7 @@ struct wtfs_linked_block {
 struct wtfs_inode_table {
 	struct wtfs_inode inodes	/* 4032 bytes */
 	[
-		WTFS_INODE_COUNT_PER_TABLE
+		WTFS_INODES_PER_TABLE
 	];
 	wtfs8_t padding[48];		/* 48 bytes */
 	wtfs64_t prev;			/* 8 bytes */
@@ -187,7 +187,7 @@ struct wtfs_dentry {
 struct wtfs_dir_block {
 	struct wtfs_dentry dentries	/* 4032 bytes */
 	[
-		WTFS_DENTRY_COUNT_PER_BLOCK
+		WTFS_DENTRIES_PER_BLOCK
 	];
 	wtfs8_t padding[48];		/* 48 bytes */
 	wtfs64_t prev;			/* 8 bytes */
@@ -198,7 +198,7 @@ struct wtfs_dir_block {
 struct wtfs_index_block {
 	wtfs64_t indices	/* 4080 bytes */
 	[
-		WTFS_INDEX_COUNT_PER_BLOCK
+		WTFS_INDICES_PER_BLOCK
 	];
 	wtfs64_t prev;		/* 8 bytes */
 	wtfs64_t next;		/* 8 bytes */
