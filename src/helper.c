@@ -1091,10 +1091,8 @@ ino_t wtfs_find_dentry(struct inode * dir, const char * filename)
  *
  * @dir: the VFS inode of the directory
  * @filename: name of the dentry to delete
- *
- * return: 0 on success, error code otherwise
  */
-int wtfs_delete_dentry(struct inode * dir, const char * filename)
+void wtfs_delete_dentry(struct inode * dir, const char * filename)
 {
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(dir);
 	struct wtfs_dentry * de = NULL;
@@ -1102,22 +1100,18 @@ int wtfs_delete_dentry(struct inode * dir, const char * filename)
 
 	/* Find dentry by name */
 	de = wtfs_dentry_by_name(dir, filename, &bh);
-	if (IS_ERR(de)) {
-		return PTR_ERR(de);
+	if (!IS_ERR(de)) {
+		/* Clear the dentry */
+		memset(de, 0, sizeof(*de));
+		mark_buffer_dirty(bh);
+		brelse(bh);
+
+		/* Update inode information */
+		dir->i_ctime = CURRENT_TIME_SEC;
+		dir->i_mtime = CURRENT_TIME_SEC;
+		--info->dentry_count;
+		mark_inode_dirty(dir);
 	}
-
-	/* Clear the dentry */
-	memset(de, 0, sizeof(*de));
-	mark_buffer_dirty(bh);
-	brelse(bh);
-
-	/* Update inode information */
-	dir->i_ctime = CURRENT_TIME_SEC;
-	dir->i_mtime = CURRENT_TIME_SEC;
-	--info->dentry_count;
-	mark_inode_dirty(dir);
-
-	return 0;
 }
 
 /*

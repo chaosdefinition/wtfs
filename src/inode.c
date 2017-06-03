@@ -177,20 +177,17 @@ static struct dentry * wtfs_lookup(struct inode * dir, struct dentry * dentry,
  * @dir: the VFS inode of the parent directory
  * @dentry: dentry to delete
  *
- * return: 0 on success, error code otherwise
+ * return: 0
  */
 static int wtfs_unlink(struct inode * dir, struct dentry * dentry)
 {
 	struct inode * vi = d_inode(dentry);
-	int ret;
 
 	wtfs_debug("unlink called, file '%s' of inode %lu\n",
 		   dentry->d_name.name, vi->i_ino);
 
 	/* Delete dentry */
-	if ((ret = wtfs_delete_dentry(dir, dentry->d_name.name)) < 0) {
-		return ret;
-	}
+	wtfs_delete_dentry(dir, dentry->d_name.name);
 
 	/* Update ctime and link count */
 	vi->i_ctime = dir->i_ctime;
@@ -320,9 +317,7 @@ static int wtfs_rename(struct inode * old_dir, struct dentry * old_dentry,
 	}
 
 	/* Remove dentry in old directory */
-	if ((ret = wtfs_delete_dentry(old_dir, old_dentry->d_name.name)) < 0) {
-		return ret;
-	}
+	wtfs_delete_dentry(old_dir, old_dentry->d_name.name);
 
 	return 0;
 }
