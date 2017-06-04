@@ -425,3 +425,131 @@ static int wtfs_getattr(struct vfsmount * mnt, struct dentry * dentry,
 
 	return 0;
 }
+
+/*
+ * Routine called to read the content of a symbolic link.
+ *
+ * @dentry: dentry of the symlink file to read
+ * @buf: the userspace buffer to hold the symlink content
+ * @length: length of the buffer in bytes
+ *
+ * return: length of the symlink content on success, error code otherwise
+ */
+static int wtfs_readlink(struct dentry * dentry, char __user * buf, int length)
+{
+	int ret;
+
+	wtfs_debug("File '%s' of inode %lu\n",
+		   dentry->d_name.name, d_inode(dentry)->i_ino);
+
+	if ((ret = generic_readlink(dentry, buf, length)) < 0) {
+		return ret;
+	}
+
+	wtfs_debug("'%s' -> '%s' of length %d\n",
+		   dentry->d_name.name, buf, ret);
+	return ret;
+}
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 2, 0)
+/*
+ * Routine called by the VFS to follow a symbolic link to the file it is
+ * pointing to.
+ *
+ * @dentry: dentry of the symlink file to follow
+ * @nd: nameidata structure to record the symlink path and depth
+ *
+ * return: buffer_head of the symlink block on success, error code otherwise
+ */
+static void * wtfs_follow_link(struct dentry * dentry, struct nameidata * nd)
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
+/*
+ * Routine called by the VFS to follow a symbolic link to the file it is
+ * pointing to.
+ *
+ * @dentry: dentry of the symlink file to follow
+ * @cookie: address to record buffer_head of the symlink block to release
+ *
+ * return: the symlink path on success, error code otherwise
+ */
+static const char * wtfs_follow_link(struct dentry * dentry, void ** cookie)
+#else /* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0) */
+/*
+ * Routine called by the VFS to get a symbolic link to the file it is pointing
+ * to.
+ *
+ * @dentry: dentry of the symlink file to follow
+ * @vi: the VFS inode of the symlink file
+ * @done: structure to record callback function to release the symlink block
+ *
+ * return: the symlink path on success, error code otherwise
+ */
+static const char * wtfs_get_link(struct dentry * dentry, struct inode * vi,
+				  struct delayed_call * done)
+#endif
+{
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
+	struct inode * vi = d_inode(dentry);
+#endif
+
+	struct super_block * vsb = vi->i_sb;
+	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
+	struct wtfs_symlink_block * symlink = NULL;
+	struct buffer_head * bh = NULL;
+
+	wtfs_debug("File '%s' of inode %lu\n", dentry->d_name.name, vi->i_ino);
+
+	/* Read symlink block */
+	if ((bh = sb_bread(vsb, info->first_block)) == NULL) {
+		wtfs_error("Failed to read block %llu\n", info->first_block);
+		return ERR_PTR(-EIO);
+	}
+	symlink = (struct wtfs_symlink_block *)bh->b_data;
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 2, 0)
+	/* Set link and return cookie */
+	nd_set_link(nd, symlink->path);
+	return bh;
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
+	/* Set cookie and return link */
+	*cookie = bh;
+	return symlink->path;
+#else /* LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0) */
+	/* Set delayed call to free buffer_head and return link */
+	set_delayed_call(done, wtfs_put_link, bh);
+	return symlink->path;
+#endif
+}
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 2, 0)
+/*
+ * Routine called by the VFS to release resources allocated by ->follow_link().
+ *
+ * @dentry: dentry of the symlink file to follow
+ * @nd: nameidata structure to record the symlink path and depth
+ * @cookie: buffer_head of the symlink block to release
+ */
+static void wtfs_put_link(struct dentry * dentry, struct nameidata * nd,
+			  void * cookie)
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4, 5, 0)
+/*
+ * Routine called by the VFS to release resources allocated by ->follow_link().
+ *
+ * @vi: the VFS inode of the symlink file
+ * @cookie: buffer_head of the symlink block to release
+ */
+static void wtfs_put_link(struct inode * vi, void * cookie)
+#else
+/*
+ * Routine called by the VFS to release resources allocated by ->get_link().
+ * Note: this is no longer part of the inode_operations for symlink files.
+ *
+ * @cookie: buffer_head of the symlink block to release
+ */
+static void wtfs_put_link(void * cookie)
+#endif
+{
+	if (cookie != NULL) {
+		brelse((struct buffer_head *)cookie);
+	}
+}
