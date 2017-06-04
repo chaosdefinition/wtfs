@@ -81,7 +81,7 @@ typedef __le64 wtfs64_t;
 #ifdef DEBUG
 #define wtfs_debug(fmt, ...)						\
 	do {								\
-		printk(KERN_DEBUG "[wtfs] at %s:%d %s: " fmt,		\
+		printk(KERN_DEBUG "[wtfs] at %s:%d %s(): " fmt,		\
 		       __FILE__, __LINE__, __func__, ##__VA_ARGS__);	\
 	} while (0)
 #else

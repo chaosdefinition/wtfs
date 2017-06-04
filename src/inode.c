@@ -116,8 +116,8 @@ static int wtfs_create(struct inode * dir, struct dentry * dentry,
 	struct inode * vi = NULL;
 	int ret;
 
-	wtfs_debug("create called, dir inode %lu, file '%s'\n", dir->i_ino,
-		   dentry->d_name.name);
+	wtfs_debug("Dir inode %lu, file '%s'\n",
+		   dir->i_ino, dentry->d_name.name);
 
 	/* Create a new inode */
 	vi = wtfs_new_inode(dir, mode | S_IFREG, NULL, 0);
@@ -155,8 +155,8 @@ static struct dentry * wtfs_lookup(struct inode * dir, struct dentry * dentry,
 	struct inode * vi = NULL;
 	ino_t ino;
 
-	wtfs_debug("lookup called, dir inode %lu, file '%s'\n", dir->i_ino,
-		   dentry->d_name.name);
+	wtfs_debug("Dir inode %lu, file '%s'\n",
+		   dir->i_ino, dentry->d_name.name);
 
 	/* Find dentry by name */
 	if ((ino = wtfs_find_dentry(dir, dentry->d_name.name)) != 0) {
@@ -183,8 +183,7 @@ static int wtfs_unlink(struct inode * dir, struct dentry * dentry)
 {
 	struct inode * vi = d_inode(dentry);
 
-	wtfs_debug("unlink called, file '%s' of inode %lu\n",
-		   dentry->d_name.name, vi->i_ino);
+	wtfs_debug("File '%s' of inode %lu\n", dentry->d_name.name, vi->i_ino);
 
 	/* Delete dentry */
 	wtfs_delete_dentry(dir, dentry->d_name.name);
@@ -210,8 +209,8 @@ static int wtfs_mkdir(struct inode * dir, struct dentry * dentry, umode_t mode)
 	struct inode * vi = NULL;
 	int ret;
 
-	wtfs_debug("mkdir called, parent inode %lu, dir to create '%s', "
-		   "mode 0%o\n", dir->i_ino, dentry->d_name.name, mode);
+	wtfs_debug("Parent inode %lu, dir to create '%s', mode 0%o\n",
+		   dir->i_ino, dentry->d_name.name, mode);
 
 	/* Create a new inode */
 	vi = wtfs_new_inode(dir, mode | S_IFDIR, NULL, 0);
@@ -257,9 +256,8 @@ static int wtfs_rmdir(struct inode * dir, struct dentry * dentry)
 	struct inode * vi = d_inode(dentry);
 	struct wtfs_inode_info * info = WTFS_INODE_INFO(vi);
 
-	wtfs_debug("rmdir called, dir '%s' of inode %lu "
-		   "with dentry count %llu\n", dentry->d_name.name, vi->i_ino,
-		   info->dentry_count);
+	wtfs_debug("Dir '%s' of inode %lu with dentry count %llu\n",
+		   dentry->d_name.name, vi->i_ino, info->dentry_count);
 
 	/* Call ->unlink() if it contains only 2 dentries ('.' and '..') */
 	if (info->dentry_count > 2) {
@@ -285,9 +283,10 @@ static int wtfs_rename(struct inode * old_dir, struct dentry * old_dentry,
 	struct inode * new_vi = d_inode(new_dentry);
 	int ret = -EINVAL;
 
-	wtfs_debug("rename called to move '%s' in dir of inode %lu to "
-		   "'%s' in dir of inode %lu\n", old_dentry->d_name.name,
-		   old_dir->i_ino, new_dentry->d_name.name, new_dir->i_ino);
+	wtfs_debug("Moving '%s' in dir of inode %lu "
+		   "to '%s' in dir of inode %lu\n",
+		   old_dentry->d_name.name, old_dir->i_ino,
+		   new_dentry->d_name.name, new_dir->i_ino);
 
 	/* Destination dentry exists, remove it */
 	if (new_vi != NULL) {
@@ -338,7 +337,7 @@ static int wtfs_symlink(struct inode * dir, struct dentry * dentry,
 	size_t length;
 	int ret;
 
-	wtfs_debug("symlink called, dir inode %lu, file '%s' linking to '%s'\n",
+	wtfs_debug("Dir inode %lu, file '%s' linking to '%s'\n",
 		   dir->i_ino, dentry->d_name.name, symname);
 
 	/* Check symlink length */
@@ -381,8 +380,7 @@ static int wtfs_setattr(struct dentry * dentry, struct iattr * attr)
 	struct inode * vi = d_inode(dentry);
 	int ret;
 
-	wtfs_debug("setattr called, file '%s' of inode %lu\n",
-		   dentry->d_name.name, vi->i_ino);
+	wtfs_debug("File '%s' of inode %lu\n", dentry->d_name.name, vi->i_ino);
 
 	/* Check if the attributes can be set */
 	if ((ret = inode_change_ok(vi, attr)) < 0) {
@@ -414,8 +412,7 @@ static int wtfs_getattr(struct vfsmount * mnt, struct dentry * dentry,
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(dentry->d_sb);
 	struct inode * vi = d_inode(dentry);
 
-	wtfs_debug("getattr called, file '%s' of inode %lu\n",
-		   dentry->d_name.name, vi->i_ino);
+	wtfs_debug("File '%s' of inode %lu\n", dentry->d_name.name, vi->i_ino);
 
 	/*
 	 * Simply call generic_fillattr() because the VFS inode already

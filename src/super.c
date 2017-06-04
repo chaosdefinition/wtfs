@@ -133,8 +133,6 @@ static int __init wtfs_init(void)
 {
 	int ret = -EINVAL;
 
-	wtfs_debug("init called\n");
-
 	/* Create inode cache pool */
 	if ((ret = create_inode_cache()) != 0) {
 		goto error;
@@ -162,13 +160,13 @@ error:
  */
 static void __exit wtfs_exit(void)
 {
-	wtfs_debug("exit called\n");
-
 	/* Unregister wtfs */
 	unregister_filesystem(&wtfs_type);
 
 	/* Destroy inode cache pool */
 	destroy_inode_cache();
+
+	wtfs_info("wtfs unregistered\n");
 }
 
 /*****************************************************************************
@@ -190,7 +188,7 @@ static struct dentry * wtfs_mount(struct file_system_type * fs_type, int flags,
 {
 	struct dentry * dentry = NULL;
 
-	wtfs_debug("mount called\n");
+	wtfs_debug("Mounting device '%s'\n", dev_name);
 
 	dentry = mount_bdev(fs_type, flags, dev_name, data, wtfs_fill_super);
 	if (IS_ERR(dentry)) {
@@ -219,7 +217,7 @@ static int wtfs_fill_super(struct super_block * vsb, void * data, int silent)
 	struct inode * root_inode = NULL;
 	int ret = -EINVAL;
 
-	wtfs_debug("fill_super called\n");
+	wtfs_debug("Filesystem '%s'\n", vsb->s_id);
 
 	/* Set block size */
 	if (!sb_set_blocksize(vsb, WTFS_BLOCK_SIZE)) {
@@ -323,11 +321,10 @@ error:
  */
 static void wtfs_kill_sb(struct super_block * vsb)
 {
-	wtfs_debug("kill_sb called\n");
+	wtfs_info("Unmounting filesystem '%s'\n", vsb->s_id);
 
 	/* Simply call kill_block_super() */
 	kill_block_super(vsb);
-	wtfs_info("wtfs unmounted\n");
 }
 
 /*****************************************************************************
@@ -346,7 +343,7 @@ static struct inode * wtfs_alloc_inode(struct super_block * vsb)
 {
 	struct wtfs_inode_info * info = NULL;
 
-	wtfs_debug("alloc_inode called\n");
+	wtfs_debug("Filesystem '%s'\n", vsb->s_id);
 
 	info = (struct wtfs_inode_info *)kmem_cache_alloc(wtfs_inode_cachep,
 							  GFP_KERNEL);
@@ -376,7 +373,7 @@ static void wtfs_i_callback(struct rcu_head * head)
  */
 static void wtfs_destroy_inode(struct inode * vi)
 {
-	wtfs_debug("destroy_inode called, inode %lu\n", vi->i_ino);
+	wtfs_debug("Inode %lu\n", vi->i_ino);
 
 	call_rcu(&vi->i_rcu, wtfs_i_callback);
 }
@@ -396,7 +393,7 @@ static int wtfs_write_inode(struct inode * vi, struct writeback_control * wbc)
 	struct buffer_head * bh = NULL;
 	int ret = -EINVAL;
 
-	wtfs_debug("write_inode called, inode %lu\n", vi->i_ino);
+	wtfs_debug("Inode %lu\n", vi->i_ino);
 
 	/*
 	 * Get the physical inode.
@@ -466,7 +463,7 @@ error:
  */
 static void wtfs_evict_inode(struct inode * vi)
 {
-	wtfs_debug("evict_inode called, inode %lu\n", vi->i_ino);
+	wtfs_debug("Inode %lu\n", vi->i_ino);
 
 	truncate_inode_pages_final(&vi->i_data);
 	invalidate_inode_buffers(vi);
@@ -486,7 +483,7 @@ static void wtfs_put_super(struct super_block * vsb)
 {
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 
-	wtfs_debug("put_super called\n");
+	wtfs_debug("Filesystem '%s'\n", vsb->s_id);
 
 	if (sbi != NULL) {
 		kfree(sbi);
@@ -505,7 +502,7 @@ static void wtfs_put_super(struct super_block * vsb)
  */
 static int wtfs_sync_fs(struct super_block * vsb, int wait)
 {
-	wtfs_debug("sync_fs called\n");
+	wtfs_debug("Filesystem '%s', wait %d\n", vsb->s_id, wait);
 
 	return wtfs_sync_super(vsb, wait);
 }
@@ -523,6 +520,8 @@ static int wtfs_statfs(struct dentry * dentry, struct kstatfs * buf)
 	struct super_block * vsb = dentry->d_sb;
 	struct wtfs_sb_info * sbi = WTFS_SB_INFO(vsb);
 	u64 id = huge_encode_dev(vsb->s_bdev->bd_dev);
+
+	wtfs_debug("Filesystem '%s'\n", vsb->s_id);
 
 	/* wtfs magic number */
 	buf->f_type = WTFS_MAGIC;
